@@ -8,6 +8,8 @@ import {
   convertMinorUnits,
   diffFromAccountCurrencyView,
   fromAccountCurrencyView,
+  hundredthsToMinorUnits,
+  minorUnitsToHundredths,
   toAccountCurrencyView,
   updatesToAccountCurrencyView,
 } from '@actual-app/core/shared/multi-currency';
@@ -34,6 +36,12 @@ export type AccountCurrencyRegister = {
   updatesToView: (
     updates: ReadonlyArray<Partial<TransactionEntity>>,
   ) => Array<Partial<TransactionEntity>>;
+  /** Running balances summed from `mc_amount`, in the register's units */
+  balancesToView: (
+    balances: Record<string, number> | null,
+  ) => Record<string, number> | null;
+  /** A register amount as the `mc_amount` to store */
+  toStoredAmount: (amount: number) => number;
 };
 
 export function useAccountCurrencyRegister(
@@ -70,6 +78,8 @@ export function useAccountCurrencyRegister(
           transactions as T[],
         diffFromView: diff => diff,
         updatesToView: updates => [...updates],
+        balancesToView: balances => balances,
+        toStoredAmount: amount => amount,
       };
     }
     return {
@@ -77,12 +87,24 @@ export function useAccountCurrencyRegister(
       currency,
       toView: transactions =>
         transactions.map(transaction =>
-          toAccountCurrencyView(transaction, estimate),
+          toAccountCurrencyView(transaction, { currency, estimate }),
         ),
       fromView: transactions =>
-        transactions.map(transaction => fromAccountCurrencyView(transaction)),
-      diffFromView: diff => diffFromAccountCurrencyView(diff),
-      updatesToView: updates => updatesToAccountCurrencyView([...updates]),
+        transactions.map(transaction =>
+          fromAccountCurrencyView(transaction, currency),
+        ),
+      diffFromView: diff => diffFromAccountCurrencyView(diff, currency),
+      updatesToView: updates =>
+        updatesToAccountCurrencyView([...updates], currency),
+      balancesToView: balances =>
+        balances &&
+        Object.fromEntries(
+          Object.entries(balances).map(([id, balance]) => [
+            id,
+            minorUnitsToHundredths(balance, currency),
+          ]),
+        ),
+      toStoredAmount: amount => hundredthsToMinorUnits(amount, currency),
     };
   }, [isForeign, currency, budgetCurrency, rateValue]);
 }

@@ -326,7 +326,7 @@ export function TransactionList({
               transaction: {
                 ...transaction,
                 amount: 0,
-                mc_amount: transaction.amount,
+                mc_amount: mcRegister.toStoredAmount(transaction.amount),
               },
             })),
             amount: transaction.amount,

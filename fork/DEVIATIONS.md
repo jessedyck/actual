@@ -244,10 +244,17 @@ amounts at the register's boundary instead of changing that logic:
   `diffFromAccountCurrencyView`, which turns an edited `amount` into
   `mc_amount` and leaves the budget amount for the server to derive (D-006).
   Rules run on real fields and can't change the amount being typed.
+- The register counts amounts in hundredths whatever the currency, while
+  `mc_amount` uses the currency's own minor units. For currencies without
+  decimals (JPY, KRW, IRR) the view scales amounts on the way in and out
+  (`minorUnitsToHundredths` / `hundredthsToMinorUnits`); for two-decimal
+  currencies nothing changes.
 - Rows with no stored account amount (schedule previews, pending
   conversions) show an estimate at today's rate, never stored.
 - `Account.tsx`: running and filtered balances sum `mc_amount` for these
-  accounts (new prop `isAccountCurrencyView`).
+  accounts (new prop `isAccountCurrencyView`). `AllTransactions` puts the
+  running balances and scheduled previews into the view before adding them
+  up, so previews continue the balance in the account's currency.
 - `TransactionsTable.tsx`: the Payment and Deposit tooltips show the budget
   amount (`useMcBudgetAmountTitle`).
 - Views with several accounts (All accounts, On budget, categories) keep
@@ -255,12 +262,12 @@ amounts at the register's boundary instead of changing that logic:
 
 Not yet: mobile still shows and edits budget-currency amounts in
 foreign-currency accounts (the server derives the account amount from what
-is typed there); running balances of schedule previews on desktop add
-budget-currency preview amounts; rules and schedules compare budget amounts.
+is typed there); rules and schedules compare budget amounts.
 
-_Reconcile:_ remove the swap from `TransactionList.tsx`, the prop and both
-sums in `Account.tsx`, and the tooltip in `TransactionsTable.tsx` once
-upstream's register handles account currencies.
+_Reconcile:_ remove the swap from `TransactionList.tsx`, the prop, both
+sums and the `AllTransactions` conversion in `Account.tsx`, and the tooltip
+in `TransactionsTable.tsx` once upstream's register handles account
+currencies.
 
 ### D-009: Docker image
 

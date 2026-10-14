@@ -42,9 +42,12 @@ the fork can switch to upstream's own implementation as it lands.
 What was done, newest first. All of it was implemented by an AI assistant;
 [DEVIATIONS.md](DEVIATIONS.md) has the details of every change.
 
+- **2026-10-14** · Register: accounts in currencies without decimals (yen,
+  won) store what is typed, and scheduled transactions continue the running
+  balance in the account's currency.
 - **2026-10-14** · Reconcile in the account's currency (desktop): the
   statement balance is typed in that currency and the adjustment transaction
-  is stored in it.
+  is stored in it. [ea38712](https://github.com/jessedyck/actual/commit/ea38712)
 - **2026-10-14** · README: notice that the fork is AI-built and for personal
   use only, and this log.
   [021e2ff](https://github.com/jessedyck/actual/commit/021e2ff)

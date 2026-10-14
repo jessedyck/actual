@@ -101,6 +101,26 @@ export function isCurrencyCode(code: unknown): code is string {
 // budget amount waits in `_mcBudgetAmount`. Field names starting with `_` are
 // ignored by the server, so a leaked view field can't be stored.
 
+/**
+ * The register, file imports and the API count amounts in hundredths, whatever
+ * the currency, while `mc_amount` uses the currency's own minor units (whole
+ * yen for JPY). These two convert between them; for currencies with two
+ * decimals they change nothing.
+ */
+export function minorUnitsToHundredths(
+  amount: number,
+  currency: string,
+): number {
+  return roundHalfAwayFromZero(amount * 10 ** (2 - getDecimalPlaces(currency)));
+}
+
+export function hundredthsToMinorUnits(
+  amount: number,
+  currency: string,
+): number {
+  return roundHalfAwayFromZero(amount / 10 ** (2 - getDecimalPlaces(currency)));
+}
+
 type ViewableTransaction = {
   amount: number;
   mc_amount?: number | null;
@@ -116,31 +136,44 @@ export type AccountCurrencyViewFields = {
   _mcEstimate?: number | null;
 };
 
+export type AccountCurrencyViewOptions = {
+  /** The account's currency */
+  currency: string;
+  /** Account amount (in its minor units) for a budget amount, or null */
+  estimate?: (budgetAmount: number) => number | null;
+};
+
 /**
  * The transaction as the register shows it in its account's currency.
  * Transactions without a stored account amount (schedule previews, pending
- * conversions) show `estimate(amount)`, or 0 when there is no estimate.
+ * conversions) show the estimate, or 0 when there is none.
  */
 export function toAccountCurrencyView<T extends ViewableTransaction>(
   transaction: T,
-  estimate: (budgetAmount: number) => number | null = () => null,
+  options: AccountCurrencyViewOptions,
 ): T & AccountCurrencyViewFields {
   const view = transaction as T & AccountCurrencyViewFields;
   if (view._mcView) {
     return view;
   }
+  const { currency, estimate = () => null } = options;
   const stored = transaction.mc_amount;
   const estimated = stored == null ? estimate(transaction.amount) : null;
+  const estimatedView =
+    estimated == null ? null : minorUnitsToHundredths(estimated, currency);
   return {
     ...transaction,
-    amount: stored ?? estimated ?? 0,
+    amount:
+      stored != null
+        ? minorUnitsToHundredths(stored, currency)
+        : (estimatedView ?? 0),
     _mcView: true,
     _mcBudgetAmount: transaction.amount,
-    ...(stored == null ? { _mcEstimate: estimated } : {}),
+    ...(stored == null ? { _mcEstimate: estimatedView } : {}),
     ...(transaction.subtransactions
       ? {
           subtransactions: transaction.subtransactions.map(sub =>
-            toAccountCurrencyView(sub, estimate),
+            toAccountCurrencyView(sub, options),
           ),
         }
       : {}),
@@ -150,6 +183,7 @@ export function toAccountCurrencyView<T extends ViewableTransaction>(
 /** Undoes `toAccountCurrencyView`, keeping any edit of the shown amount. */
 export function fromAccountCurrencyView<T extends ViewableTransaction>(
   transaction: T & AccountCurrencyViewFields,
+  currency: string,
 ): T {
   if (!transaction._mcView) {
     return transaction;
@@ -160,11 +194,13 @@ export function fromAccountCurrencyView<T extends ViewableTransaction>(
   return {
     ...rest,
     amount: _mcBudgetAmount ?? 0,
-    mc_amount: isUntouchedEstimate ? (rest.mc_amount ?? null) : rest.amount,
+    mc_amount: isUntouchedEstimate
+      ? (rest.mc_amount ?? null)
+      : hundredthsToMinorUnits(rest.amount, currency),
     ...(rest.subtransactions
       ? {
           subtransactions: rest.subtransactions.map(sub =>
-            fromAccountCurrencyView(sub),
+            fromAccountCurrencyView(sub, currency),
           ),
         }
       : {}),
@@ -181,7 +217,7 @@ type ViewDiffItem = Partial<ViewableTransaction> &
  */
 export function diffFromAccountCurrencyView<
   D extends { added?: ViewDiffItem[]; updated?: ViewDiffItem[] },
->(diff: D): D {
+>(diff: D, currency: string): D {
   const strip = ({
     _mcView,
     _mcBudgetAmount,
@@ -200,7 +236,7 @@ export function diffFromAccountCurrencyView<
         ? { ...rest, amount: item._mcBudgetAmount ?? 0 }
         : {
             ...rest,
-            mc_amount: amount ?? 0,
+            mc_amount: hundredthsToMinorUnits(amount ?? 0, currency),
             amount: item._mcBudgetAmount ?? 0,
           };
     }),
@@ -208,7 +244,9 @@ export function diffFromAccountCurrencyView<
       const { amount, ...rest } = strip(item);
       return {
         ...rest,
-        ...(amount !== undefined ? { mc_amount: amount } : {}),
+        ...(amount !== undefined
+          ? { mc_amount: hundredthsToMinorUnits(amount, currency) }
+          : {}),
         ...(item._mcBudgetAmount !== undefined
           ? { amount: item._mcBudgetAmount }
           : {}),
@@ -220,10 +258,13 @@ export function diffFromAccountCurrencyView<
 /** Server-side updates (real fields) mapped onto the account-currency view. */
 export function updatesToAccountCurrencyView<T extends ViewDiffItem>(
   updates: T[],
+  currency: string,
 ): T[] {
   return updates.map(({ amount, mc_amount, ...rest }) => ({
     ...rest,
-    ...(mc_amount != null ? { amount: mc_amount, mc_amount } : {}),
+    ...(mc_amount != null
+      ? { amount: minorUnitsToHundredths(mc_amount, currency), mc_amount }
+      : {}),
     ...(amount !== undefined ? { _mcBudgetAmount: amount } : {}),
   })) as T[];
 }

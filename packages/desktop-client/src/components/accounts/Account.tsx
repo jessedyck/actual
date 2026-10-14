@@ -60,6 +60,8 @@ import type {
 } from '#components/transactions/table/columns';
 import { TransactionList } from '#components/transactions/TransactionList';
 import { validateAccountName } from '#components/util/accountValidation';
+// [fork:mc D-013]
+import { useAccountCurrencyRegister } from '#hooks/useAccountCurrencyRegister';
 import { useAccountPreviewTransactions } from '#hooks/useAccountPreviewTransactions';
 import { useAccounts } from '#hooks/useAccounts';
 import { SchedulesProvider } from '#hooks/useCachedSchedules';
@@ -126,15 +128,28 @@ type AllTransactionsProps = {
 function AllTransactions({
   account,
   transactions,
-  balances,
+  balances: storedBalances,
   showBalances,
   filtered,
   children,
 }: AllTransactionsProps) {
   const accountId = account?.id;
   const { dispatch: splitsExpandedDispatch } = useSplitsExpanded();
-  const { previewTransactions, isLoading: isPreviewTransactionsLoading } =
-    useAccountPreviewTransactions({ accountId });
+  const {
+    previewTransactions: storedPreviewTransactions,
+    isLoading: isPreviewTransactionsLoading,
+  } = useAccountPreviewTransactions({ accountId });
+  // [fork:mc D-013] A foreign-currency account's balances and scheduled
+  // previews in the register's units, so previews add up in its currency
+  const mcRegister = useAccountCurrencyRegister(account);
+  const balances = useMemo(
+    () => mcRegister.balancesToView(storedBalances),
+    [mcRegister, storedBalances],
+  );
+  const previewTransactions = useMemo(
+    () => mcRegister.toView(storedPreviewTransactions),
+    [mcRegister, storedPreviewTransactions],
+  );
 
   useEffect(() => {
     if (!isPreviewTransactionsLoading) {

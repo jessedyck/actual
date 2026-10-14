@@ -5,9 +5,11 @@ import {
   fromAccountCurrencyView,
   getAccountCurrency,
   getImpliedRate,
+  hundredthsToMinorUnits,
   isCurrencyCode,
   isForeignCurrencyAccount,
   makeRateId,
+  minorUnitsToHundredths,
   roundHalfAwayFromZero,
   toAccountCurrencyView,
   updatesToAccountCurrencyView,
@@ -64,18 +66,19 @@ describe('multi-currency helpers', () => {
 // [fork:mc D-013]
 describe('account-currency register view', () => {
   const stored = { id: 'a', amount: -651, mc_amount: -1050 };
+  const cad = { currency: 'CAD' };
 
   it('shows the account amount and keeps the budget amount aside', () => {
-    const view = toAccountCurrencyView(stored);
+    const view = toAccountCurrencyView(stored, cad);
     expect(view.amount).toBe(-1050);
     expect(view._mcBudgetAmount).toBe(-651);
-    expect(toAccountCurrencyView(view)).toBe(view);
-    expect(fromAccountCurrencyView(view)).toEqual(stored);
+    expect(toAccountCurrencyView(view, cad)).toBe(view);
+    expect(fromAccountCurrencyView(view, 'CAD')).toEqual(stored);
   });
 
   it('keeps an edited account amount when leaving the view', () => {
-    const view = { ...toAccountCurrencyView(stored), amount: -2000 };
-    expect(fromAccountCurrencyView(view)).toEqual({
+    const view = { ...toAccountCurrencyView(stored, cad), amount: -2000 };
+    expect(fromAccountCurrencyView(view, 'CAD')).toEqual({
       id: 'a',
       amount: -651,
       mc_amount: -2000,
@@ -84,22 +87,28 @@ describe('account-currency register view', () => {
 
   it('estimates missing account amounts without storing the estimate', () => {
     const missing = { id: 'b', amount: -620, mc_amount: null };
-    const view = toAccountCurrencyView(missing, amount => amount * 2);
+    const view = toAccountCurrencyView(missing, {
+      currency: 'CAD',
+      estimate: amount => amount * 2,
+    });
     expect(view.amount).toBe(-1240);
-    expect(fromAccountCurrencyView(view)).toEqual(missing);
-    expect(fromAccountCurrencyView({ ...view, amount: -1000 }).mc_amount).toBe(
-      -1000,
-    );
+    expect(fromAccountCurrencyView(view, 'CAD')).toEqual(missing);
+    expect(
+      fromAccountCurrencyView({ ...view, amount: -1000 }, 'CAD').mc_amount,
+    ).toBe(-1000);
   });
 
   it('turns register diffs into account amounts for the server', () => {
-    const diff = diffFromAccountCurrencyView({
-      added: [{ id: 'new', amount: -1500 }],
-      updated: [
-        { id: 'a', amount: -2000 },
-        { id: 'c', category: 'food' },
-      ],
-    });
+    const diff = diffFromAccountCurrencyView(
+      {
+        added: [{ id: 'new', amount: -1500 }],
+        updated: [
+          { id: 'a', amount: -2000 },
+          { id: 'c', category: 'food' },
+        ],
+      },
+      'CAD',
+    );
     // New: the budget amount is left at 0 for the server to derive
     expect(diff.added).toEqual([{ id: 'new', mc_amount: -1500, amount: 0 }]);
     // Edited: only the account amount changes; the server re-derives
@@ -112,21 +121,67 @@ describe('account-currency register view', () => {
   it('does not store an untouched estimate for added rows', () => {
     const view = toAccountCurrencyView(
       { id: 'p', amount: -620, mc_amount: null },
-      amount => amount * 2,
+      { currency: 'CAD', estimate: amount => amount * 2 },
     );
-    const diff = diffFromAccountCurrencyView({ added: [view] });
+    const diff = diffFromAccountCurrencyView({ added: [view] }, 'CAD');
     expect(diff.added?.[0]).toEqual({ id: 'p', amount: -620, mc_amount: null });
   });
 
   it('maps server updates onto the view', () => {
     expect(
-      updatesToAccountCurrencyView([
-        { id: 'a', amount: -700, mc_amount: -1100 },
-        { id: 'b', category: null },
-      ]),
+      updatesToAccountCurrencyView(
+        [
+          { id: 'a', amount: -700, mc_amount: -1100 },
+          { id: 'b', category: null },
+        ],
+        'CAD',
+      ),
     ).toEqual([
       { id: 'a', amount: -1100, mc_amount: -1100, _mcBudgetAmount: -700 },
       { id: 'b', category: null },
     ]);
+  });
+
+  it('counts hundredths for currencies without decimals', () => {
+    expect(minorUnitsToHundredths(1234, 'JPY')).toBe(123400);
+    expect(hundredthsToMinorUnits(123400, 'JPY')).toBe(1234);
+    // Fractions of a yen typed in the register are rounded away
+    expect(hundredthsToMinorUnits(123450, 'JPY')).toBe(1235);
+    expect(hundredthsToMinorUnits(-123450, 'JPY')).toBe(-1235);
+    expect(minorUnitsToHundredths(1234, 'CAD')).toBe(1234);
+    expect(hundredthsToMinorUnits(1234, 'CAD')).toBe(1234);
+  });
+
+  it('shows and stores yen in the register hundredths', () => {
+    const yen = { id: 'y', amount: -651, mc_amount: -1000 };
+    const view = toAccountCurrencyView(yen, {
+      currency: 'JPY',
+      estimate: () => -999,
+    });
+    expect(view.amount).toBe(-100000);
+    expect(fromAccountCurrencyView(view, 'JPY')).toEqual(yen);
+    expect(
+      fromAccountCurrencyView({ ...view, amount: -250000 }, 'JPY').mc_amount,
+    ).toBe(-2500);
+
+    const estimated = toAccountCurrencyView(
+      { id: 'e', amount: -651, mc_amount: null },
+      { currency: 'JPY', estimate: () => -1000 },
+    );
+    expect(estimated.amount).toBe(-100000);
+    expect(estimated._mcEstimate).toBe(-100000);
+
+    const diff = diffFromAccountCurrencyView(
+      {
+        added: [{ id: 'n', amount: -50000 }],
+        updated: [{ id: 'y', amount: -250000 }],
+      },
+      'JPY',
+    );
+    expect(diff.added).toEqual([{ id: 'n', mc_amount: -500, amount: 0 }]);
+    expect(diff.updated).toEqual([{ id: 'y', mc_amount: -2500 }]);
+    expect(
+      updatesToAccountCurrencyView([{ id: 'y', mc_amount: -2500 }], 'JPY'),
+    ).toEqual([{ id: 'y', amount: -250000, mc_amount: -2500 }]);
   });
 });
