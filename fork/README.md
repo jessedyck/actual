@@ -35,6 +35,7 @@ the fork can switch to upstream's own implementation as it lands.
 | Reconcile in the account's currency (desktop)                              | Done    |
 | Imports (CSV, OFX, QIF, CAMT) in the account's currency                    | Done    |
 | Mobile: amounts and reconcile in the account's currency                    | Done    |
+| Exchange rate adjustment to today's value (desktop)                        | Done    |
 | Reports with a display-currency selector                                   | Planned |
 
 ## Log
@@ -42,10 +43,13 @@ the fork can switch to upstream's own implementation as it lands.
 What was done, newest first. All of it was implemented by an AI assistant;
 [DEVIATIONS.md](DEVIATIONS.md) has the details of every change.
 
+- **2026-10-14** · Exchange rate adjustment: one click records the
+  difference between what an account in another currency is worth today and
+  its value in the budget.
 - **2026-10-14** · Mobile: an account with its own currency shows its
   balances, transactions and running balances in that currency; amounts are
   entered in the currency of the chosen account; reconciling works in that
-  currency.
+  currency. [7ee0afb](https://github.com/jessedyck/actual/commit/7ee0afb)
 - **2026-10-14** · Importing files into an account with its own currency:
   amounts are read in that currency, converted at each transaction's date,
   and matched against existing transactions in that currency.

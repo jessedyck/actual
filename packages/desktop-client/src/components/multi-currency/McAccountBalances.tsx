@@ -24,6 +24,7 @@ import { useSelectedItems } from '#hooks/useSelected';
 import { useSheetValue } from '#hooks/useSheetValue';
 
 import { McBalancePill } from './McBalancePill';
+import { McRevaluationButton } from './McRevaluationButton';
 
 type McAccountBalancesProps = {
   account: AccountEntity;
@@ -140,6 +141,13 @@ export function McAccountBalances({
         title={t(
           "The budget-currency total of this account's transactions, at the rates they were recorded with",
         )}
+      />
+      {/* [fork:mc D-014] */}
+      <McRevaluationButton
+        account={account}
+        currency={currency}
+        worthToday={worthToday}
+        budgetValue={budgetValue ?? 0}
       />
 
       {showExtraBalances && (
