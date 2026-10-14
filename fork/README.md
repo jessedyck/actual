@@ -32,8 +32,9 @@ the fork can switch to upstream's own implementation as it lands.
 | Settings: turning it on, exchange rates, budget-currency lock              | Done    |
 | Accounts: currency when creating or changing, balances in that currency    | Done    |
 | Register (desktop): entering and showing amounts in the account's currency | Done    |
-| Mobile: amounts in the account's currency                                  | Planned |
-| CSV import and reconcile in the account's currency                         | Planned |
+| Reconcile in the account's currency (desktop)                              | Done    |
+| Mobile: amounts and reconcile in the account's currency                    | Planned |
+| CSV import in the account's currency                                       | Planned |
 | Reports with a display-currency selector                                   | Planned |
 
 ## Log
@@ -41,8 +42,12 @@ the fork can switch to upstream's own implementation as it lands.
 What was done, newest first. All of it was implemented by an AI assistant;
 [DEVIATIONS.md](DEVIATIONS.md) has the details of every change.
 
+- **2026-10-14** · Reconcile in the account's currency (desktop): the
+  statement balance is typed in that currency and the adjustment transaction
+  is stored in it.
 - **2026-10-14** · README: notice that the fork is AI-built and for personal
   use only, and this log.
+  [021e2ff](https://github.com/jessedyck/actual/commit/021e2ff)
 - **2026-10-14** · Register in the account's currency (desktop): amounts,
   splits and running balance in the account's currency, budget amount in the
   tooltip.

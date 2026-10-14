@@ -43,6 +43,9 @@ import { FiltersStack } from '#components/filters/FiltersStack';
 import type { SavedFilter } from '#components/filters/SavedFilterMenuButton';
 // [fork:mc D-012]
 import { McAccountBalances } from '#components/multi-currency/McAccountBalances';
+// [fork:mc D-008]
+import { McReconcileMenu } from '#components/multi-currency/McReconcileMenu';
+import { McReconcilingMessage } from '#components/multi-currency/McReconcilingMessage';
 import { NotesButton } from '#components/NotesButton';
 import { SelectedTransactionsButton } from '#components/transactions/SelectedTransactionsButton';
 import { useDateFormat } from '#hooks/useDateFormat';
@@ -474,11 +477,21 @@ export function AccountHeader({
                   isOpen={reconcileOpen}
                   onOpenChange={() => setReconcileOpen(false)}
                 >
-                  <ReconcileMenu
-                    account={account}
-                    onClose={() => setReconcileOpen(false)}
-                    onReconcile={onReconcile}
-                  />
+                  {/* [fork:mc D-008] Foreign-currency accounts reconcile in their own currency */}
+                  {accountCurrency.isForeign ? (
+                    <McReconcileMenu
+                      account={account}
+                      currency={accountCurrency.currency}
+                      onClose={() => setReconcileOpen(false)}
+                      onReconcile={onReconcile}
+                    />
+                  ) : (
+                    <ReconcileMenu
+                      account={account}
+                      onClose={() => setReconcileOpen(false)}
+                      onReconcile={onReconcile}
+                    />
+                  )}
                 </Popover>
               </Tooltip>
             )}
@@ -590,14 +603,24 @@ export function AccountHeader({
           />
         )}
       </View>
-      {reconcileAmount != null && (
-        <ReconcilingMessage
-          targetBalance={reconcileAmount}
-          balanceQuery={balanceQuery}
-          onDone={onDoneReconciling}
-          onCreateTransaction={onCreateReconciliationTransaction}
-        />
-      )}
+      {/* [fork:mc D-008] */}
+      {reconcileAmount != null &&
+        (accountCurrency.isForeign && account ? (
+          <McReconcilingMessage
+            accountId={account.id}
+            currency={accountCurrency.currency}
+            targetBalance={reconcileAmount}
+            onDone={onDoneReconciling}
+            onCreateTransaction={onCreateReconciliationTransaction}
+          />
+        ) : (
+          <ReconcilingMessage
+            targetBalance={reconcileAmount}
+            balanceQuery={balanceQuery}
+            onDone={onDoneReconciling}
+            onCreateTransaction={onCreateReconciliationTransaction}
+          />
+        ))}
     </>
   );
 }

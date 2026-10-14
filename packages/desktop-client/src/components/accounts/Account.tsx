@@ -46,6 +46,11 @@ import {
   useUpdateAccountMutation,
 } from '#accounts';
 import { markAccountRead } from '#accounts/accountsSlice';
+// [fork:mc D-008]
+import {
+  createMcReconciliationTransaction,
+  finishMcReconciliation,
+} from '#accounts/mcReconciliation';
 import * as reconciliation from '#accounts/reconciliation';
 import { FeatureErrorFallback } from '#components/FeatureErrorFallback';
 import type { SavedFilter } from '#components/filters/SavedFilterMenuButton';
@@ -1129,9 +1134,18 @@ class AccountInternal extends PureComponent<
 
     const { reconcileAmount } = this.state;
 
-    await reconciliation.finishReconciliation(account.id, reconcileAmount, () =>
-      this.lockTransactions(),
-    );
+    // [fork:mc D-008] Foreign-currency accounts compare account amounts
+    if (this.props.isAccountCurrencyView) {
+      await finishMcReconciliation(account.id, reconcileAmount, () =>
+        this.lockTransactions(),
+      );
+    } else {
+      await reconciliation.finishReconciliation(
+        account.id,
+        reconcileAmount,
+        () => this.lockTransactions(),
+      );
+    }
 
     const lastReconciled = new Date().getTime().toString();
     this.props.onUpdateAccount({ ...account, last_reconciled: lastReconciled });
@@ -1148,7 +1162,11 @@ class AccountInternal extends PureComponent<
       return;
     }
 
-    await reconciliation.createReconciliationTransaction(
+    // [fork:mc D-008] Foreign-currency accounts adjust in their own currency
+    const createTransaction = this.props.isAccountCurrencyView
+      ? createMcReconciliationTransaction
+      : reconciliation.createReconciliationTransaction;
+    await createTransaction(
       accountId,
       diff,
       // Optimistic UI: update the transaction list before sending the data to the database
