@@ -820,7 +820,9 @@ class AccountInternal extends PureComponent<
       | 'toggle-reconciled'
       | 'toggle-net-worth-chart'
       | 'manage-columns'
-      | 'account-group',
+      | 'account-group'
+      // [fork:mc D-012]
+      | 'mc-currency',
   ) => {
     const accountId = this.props.accountId!;
     const account = this.props.accounts.find(
@@ -868,6 +870,14 @@ class AccountInternal extends PureComponent<
                 accountId,
               },
             },
+          }),
+        );
+        break;
+      // [fork:mc D-012]
+      case 'mc-currency':
+        this.props.dispatch(
+          pushModal({
+            modal: { name: 'mc-account-currency', options: { accountId } },
           }),
         );
         break;

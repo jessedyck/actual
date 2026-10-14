@@ -84,6 +84,8 @@ import { TransactionTableColumnsModal } from './modals/TransactionTableColumnsMo
 import { TransferModal } from './modals/TransferModal';
 import { TransferOwnership } from './modals/TransferOwnership';
 import { UnmigrateBudgetAutomationsModal } from './modals/UnmigrateBudgetAutomationsModal';
+// [fork:mc D-012]
+import { AccountCurrencyModal } from './multi-currency/AccountCurrencyModal';
 import { CategoryLearning } from './payees/CategoryLearning';
 import { DiscoverSchedules } from './schedules/DiscoverSchedules';
 import { PostsOfflineNotification } from './schedules/PostsOfflineNotification';
@@ -140,6 +142,10 @@ export function Modals() {
 
         case 'account-groups':
           return <AccountGroupsModal key={key} {...modal.options} />;
+
+        // [fork:mc D-012]
+        case 'mc-account-currency':
+          return <AccountCurrencyModal key={key} {...modal.options} />;
 
         case 'close-account':
           return <CloseAccountModal key={key} {...modal.options} />;

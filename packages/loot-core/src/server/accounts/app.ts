@@ -139,6 +139,8 @@ async function getAccounts(): Promise<AccountEntity[]> {
         last_sync: dbAccount.last_sync ?? null,
         bank_sync_status: dbAccount.bank_sync_status ?? null,
         account_group_id: dbAccount.account_group_id ?? null,
+        // [fork:mc D-012] The client needs the account's currency
+        mc_currency: dbAccount.mc_currency ?? null,
       }) satisfies AccountEntity,
   );
 }

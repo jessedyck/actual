@@ -26,9 +26,14 @@ import { Notes } from '#components/Notes';
 import { validateAccountName } from '#components/util/accountValidation';
 import { useAccount } from '#hooks/useAccount';
 import { useAccounts } from '#hooks/useAccounts';
+// [fork:mc D-012]
+import { useMultiCurrency } from '#hooks/useMultiCurrency';
 import { useNotes } from '#hooks/useNotes';
 import { useSyncedPref } from '#hooks/useSyncedPref';
 import type { Modal as ModalType } from '#modals/modalsSlice';
+// [fork:mc D-012]
+import { pushModal } from '#modals/modalsSlice';
+import { useDispatch } from '#redux';
 
 type AccountMenuModalProps = Extract<
   ModalType,
@@ -238,6 +243,9 @@ function AdditionalAccountMenu({
   });
   const [showBalances] = useSyncedPref(`show-balances-${account.id}`);
   const [hideReconciled] = useSyncedPref(`hide-reconciled-${account.id}`);
+  // [fork:mc D-012]
+  const dispatch = useDispatch();
+  const { isEnabled: isMultiCurrencyEnabled } = useMultiCurrency();
 
   return (
     <View>
@@ -277,6 +285,10 @@ function AdditionalAccountMenu({
                     ? t('Hide reconciled transactions')
                     : t('Show reconciled transactions'),
               },
+              // [fork:mc D-012]
+              ...(isMultiCurrencyEnabled
+                ? [{ name: 'mc-currency', text: t('Change currency…') }]
+                : []),
               account.closed
                 ? {
                     name: 'reopen',
@@ -305,6 +317,17 @@ function AdditionalAccountMenu({
                   break;
                 case 'toggle-reconciled':
                   onToggleReconciled?.();
+                  break;
+                // [fork:mc D-012]
+                case 'mc-currency':
+                  dispatch(
+                    pushModal({
+                      modal: {
+                        name: 'mc-account-currency',
+                        options: { accountId: account.id },
+                      },
+                    }),
+                  );
                   break;
                 default:
                   throw new Error(`Unrecognized menu option: ${String(name)}`);

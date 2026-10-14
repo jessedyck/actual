@@ -24,6 +24,8 @@ import {
   ModalTitle,
 } from '#components/common/Modal';
 import { Checkbox } from '#components/forms';
+// [fork:mc D-012]
+import { AccountCurrencyField } from '#components/multi-currency/AccountCurrencyField';
 import { validateAccountName } from '#components/util/accountValidation';
 import { useAccounts } from '#hooks/useAccounts';
 import { useNavigate } from '#hooks/useNavigate';
@@ -40,6 +42,8 @@ export function CreateLocalAccountModal() {
   const [name, setName] = useState('');
   const [offbudget, setOffbudget] = useState(false);
   const [balance, setBalance] = useState('0');
+  // [fork:mc D-012] Empty means the budget currency
+  const [currency, setCurrency] = useState('');
 
   const [nameError, setNameError] = useState(null);
   const [balanceError, setBalanceError] = useState(false);
@@ -72,6 +76,8 @@ export function CreateLocalAccountModal() {
           name,
           balance: toRelaxedNumber(balance),
           offBudget: offbudget,
+          // [fork:mc D-012]
+          mc_currency: currency || null,
         },
         {
           onSuccess: id => {
@@ -201,6 +207,9 @@ export function CreateLocalAccountModal() {
                   </div>
                 </View>
               </View>
+
+              {/* [fork:mc D-012] */}
+              <AccountCurrencyField value={currency} onChange={setCurrency} />
 
               <InlineField label={t('Balance')} width="100%">
                 <Input

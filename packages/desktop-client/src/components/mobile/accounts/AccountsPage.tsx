@@ -30,6 +30,8 @@ import { isAccountFailedSync } from '#accounts/syncStatus';
 import { makeAmountFullStyle } from '#components/budget/util';
 import { MOBILE_NAV_HEIGHT } from '#components/mobile/MobileNavTabs';
 import { PullToRefresh } from '#components/mobile/PullToRefresh';
+// [fork:mc D-012]
+import { McCellValue } from '#components/multi-currency/McCellValue';
 import { MobilePageHeader, Page } from '#components/Page';
 import { CellValue, CellValueText } from '#components/spreadsheet/CellValue';
 import { useAccounts } from '#hooks/useAccounts';
@@ -203,7 +205,12 @@ function AccountListItem({
               {account.name}
             </TextOneLine>
           </View>
-          <CellValue binding={getBalanceQuery(account.id)} type="financial">
+          {/* [fork:mc D-012] Foreign-currency accounts show their own currency */}
+          <McCellValue
+            account={account}
+            binding={getBalanceQuery(account.id)}
+            type="financial"
+          >
             {props => (
               <CellValueText<'account', 'balance'>
                 {...props}
@@ -218,7 +225,7 @@ function AccountListItem({
                 data-testid="account-balance"
               />
             )}
-          </CellValue>
+          </McCellValue>
         </Button>
       )}
     </ListBoxItem>

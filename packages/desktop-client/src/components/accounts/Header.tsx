@@ -41,12 +41,16 @@ import { Search } from '#components/common/Search';
 import { FilterButton } from '#components/filters/FiltersMenu';
 import { FiltersStack } from '#components/filters/FiltersStack';
 import type { SavedFilter } from '#components/filters/SavedFilterMenuButton';
+// [fork:mc D-012]
+import { McAccountBalances } from '#components/multi-currency/McAccountBalances';
 import { NotesButton } from '#components/NotesButton';
 import { SelectedTransactionsButton } from '#components/transactions/SelectedTransactionsButton';
 import { useDateFormat } from '#hooks/useDateFormat';
 import { useFeatureFlag } from '#hooks/useFeatureFlag';
 import { useLocale } from '#hooks/useLocale';
 import { useLocalPref } from '#hooks/useLocalPref';
+// [fork:mc D-012]
+import { useAccountCurrency, useMultiCurrency } from '#hooks/useMultiCurrency';
 import { useSplitsExpanded } from '#hooks/useSplitsExpanded';
 import { useSyncedPref } from '#hooks/useSyncedPref';
 import { useSyncServerStatus } from '#hooks/useSyncServerStatus';
@@ -183,6 +187,8 @@ export function AccountHeader({
   onMergeTransactions,
 }: AccountHeaderProps) {
   const { t } = useTranslation();
+  // [fork:mc D-012] Foreign-currency accounts show their own currency
+  const accountCurrency = useAccountCurrency(account);
 
   const [reconcileOpen, setReconcileOpen] = useState(false);
   const searchInput = useRef<HTMLInputElement>(null);
@@ -310,14 +316,28 @@ export function AccountHeader({
               />
             </View>
 
-            <Balances
-              balanceQuery={balanceQuery}
-              showExtraBalances={showExtraBalances}
-              onToggleExtraBalances={onToggleExtraBalances}
-              account={account}
-              isFiltered={isFiltered}
-              filteredAmount={filteredAmount}
-            />
+            {/* [fork:mc D-012] */}
+            {accountCurrency.isForeign && account ? (
+              <McAccountBalances
+                account={account}
+                currency={accountCurrency.currency}
+                budgetCurrency={accountCurrency.budgetCurrency}
+                balanceQuery={balanceQuery}
+                showExtraBalances={showExtraBalances}
+                onToggleExtraBalances={onToggleExtraBalances}
+                isFiltered={isFiltered}
+                filteredAmount={filteredAmount}
+              />
+            ) : (
+              <Balances
+                balanceQuery={balanceQuery}
+                showExtraBalances={showExtraBalances}
+                onToggleExtraBalances={onToggleExtraBalances}
+                account={account}
+                isFiltered={isFiltered}
+                filteredAmount={filteredAmount}
+              />
+            )}
           </View>
 
           <BalanceHistoryGraph
@@ -734,7 +754,9 @@ type AccountMenuProps = {
       | 'toggle-reconciled'
       | 'toggle-net-worth-chart'
       | 'manage-columns'
-      | 'account-group',
+      | 'account-group'
+      // [fork:mc D-012]
+      | 'mc-currency',
   ) => void;
 };
 
@@ -749,6 +771,8 @@ function AccountMenu({
   const { t } = useTranslation();
   const syncServerStatus = useSyncServerStatus();
   const newSidebarUIEnabled = useFeatureFlag('newSidebarUI');
+  // [fork:mc D-012]
+  const { isEnabled: isMultiCurrencyEnabled } = useMultiCurrency();
 
   return (
     <Menu
@@ -790,6 +814,10 @@ function AccountMenu({
             : t('Show reconciled transactions'),
         },
         { name: 'export', text: t('Export') },
+        // [fork:mc D-012]
+        ...(isMultiCurrencyEnabled
+          ? [{ name: 'mc-currency', text: t('Change currency…') } as const]
+          : []),
         ...(account && !account.closed
           ? canSync
             ? [
