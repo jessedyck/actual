@@ -11,17 +11,18 @@ to upstream's own implementation as it lands.
 
 ## Status
 
-| Piece                                                                   | State       |
-| ----------------------------------------------------------------------- | ----------- |
-| Account currency, account-currency amounts, rate cache (database)       | Done        |
-| Automatic and manual exchange rates                                     | Done        |
-| Conversion on every save, transfers between currencies, splits          | Done        |
-| Starting balance and backfill when an account gets a currency           | Done        |
-| Settings: turning it on, exchange rates, budget-currency lock           | Done        |
-| Accounts: currency when creating or changing, balances in that currency | Done        |
-| Register: entering and showing amounts in the account's currency        | In progress |
-| CSV import and reconcile in the account's currency                      | Planned     |
-| Reports with a display-currency selector                                | Planned     |
+| Piece                                                                      | State   |
+| -------------------------------------------------------------------------- | ------- |
+| Account currency, account-currency amounts, rate cache (database)          | Done    |
+| Automatic and manual exchange rates                                        | Done    |
+| Conversion on every save, transfers between currencies, splits             | Done    |
+| Starting balance and backfill when an account gets a currency              | Done    |
+| Settings: turning it on, exchange rates, budget-currency lock              | Done    |
+| Accounts: currency when creating or changing, balances in that currency    | Done    |
+| Register (desktop): entering and showing amounts in the account's currency | Done    |
+| Mobile: amounts in the account's currency                                  | Planned |
+| CSV import and reconcile in the account's currency                         | Planned |
+| Reports with a display-currency selector                                   | Planned |
 
 ## Running it
 

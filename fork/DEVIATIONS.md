@@ -27,6 +27,8 @@ retire fork code as it does.
   - `packages/desktop-client/src/hooks/useMultiCurrencyFormat.ts`
   - `packages/desktop-client/src/hooks/useMcAccountBalance.ts`
   - `packages/desktop-client/src/hooks/useMcRate.ts`
+  - `packages/desktop-client/src/hooks/useAccountCurrencyRegister.ts`
+  - `packages/desktop-client/src/hooks/useMcBudgetAmountTitle.ts`
 - Everything the fork stores is prefixed `mc_` (columns, the rate table,
   synced preference keys). An upstream migration can therefore never collide
   with fork data, even if upstream picks names like `currency`.
@@ -57,7 +59,7 @@ migration, described under D-002.
 | D-010 | Fork docs                                                     | none (`fork/`)                                                                                                                                                                                                                                                                                                                     | Done                                      |
 | D-011 | Client hooks: multi-currency state, per-currency formatting   | none (fork-owned)                                                                                                                                                                                                                                                                                                                  | Done                                      |
 | D-012 | Accounts: currency on create and change, balances             | `loot-core/src/server/accounts/app.ts` (`accounts-get`), `desktop-client/src/accounts/mutations.ts`, `desktop-client/src/modals/modalsSlice.ts`, `desktop-client/src/components/{Modals,modals/CreateLocalAccountModal,modals/AccountMenuModal,accounts/Header,accounts/Account,sidebar/Account,mobile/accounts/AccountsPage}.tsx` | Done (mobile account page header pending) |
-| D-013 | Register: amounts in the account's currency                   | (not started)                                                                                                                                                                                                                                                                                                                      | Planned                                   |
+| D-013 | Register: amounts in the account's currency                   | `desktop-client/src/components/transactions/{TransactionList,TransactionsTable}.tsx`, `desktop-client/src/components/accounts/Account.tsx`                                                                                                                                                                                         | Done (desktop; mobile pending)            |
 
 ### D-001: `multiCurrency` flag
 
@@ -204,6 +206,38 @@ filtered balances show budget-currency sums.
 _Reconcile:_ swap `McCellValue` / `McAccountBalances` back to upstream's
 components once upstream formats balances per account currency; keep the
 `accounts-get` field until upstream returns the account currency itself.
+
+### D-013: Register in the account's currency
+
+The register's logic (inputs, splits, running balance, new rows) only knows
+`amount`. For a single foreign-currency account the fork swaps the two
+amounts at the register's boundary instead of changing that logic:
+
+- `TransactionList.tsx` passes transactions through
+  `useAccountCurrencyRegister` (fork hook over `toAccountCurrencyView` in the
+  fork's shared helpers): `amount` holds the account amount and the budget
+  amount waits in `_mcBudgetAmount`. Changes going up (`onChange`) are
+  swapped back; diffs going to the server go through
+  `diffFromAccountCurrencyView`, which turns an edited `amount` into
+  `mc_amount` and leaves the budget amount for the server to derive (D-006).
+  Rules run on real fields and can't change the amount being typed.
+- Rows with no stored account amount (schedule previews, pending
+  conversions) show an estimate at today's rate, never stored.
+- `Account.tsx`: running and filtered balances sum `mc_amount` for these
+  accounts (new prop `isAccountCurrencyView`).
+- `TransactionsTable.tsx`: the Payment and Deposit tooltips show the budget
+  amount (`useMcBudgetAmountTitle`).
+- Views with several accounts (All accounts, On budget, categories) keep
+  showing budget amounts, as upstream does.
+
+Not yet: mobile still shows and edits budget-currency amounts in
+foreign-currency accounts (the server derives the account amount from what
+is typed there); running balances of schedule previews on desktop add
+budget-currency preview amounts; rules and schedules compare budget amounts.
+
+_Reconcile:_ remove the swap from `TransactionList.tsx`, the prop and both
+sums in `Account.tsx`, and the tooltip in `TransactionsTable.tsx` once
+upstream's register handles account currencies.
 
 ### D-009: Docker image
 

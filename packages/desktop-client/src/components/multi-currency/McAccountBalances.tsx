@@ -161,7 +161,8 @@ export function McAccountBalances({
       {isFiltered && (
         <McBalancePill
           name={t('Filtered balance:')}
-          value={format(filteredAmount ?? 0, 'financial')}
+          // Summed in the account currency by the account page (D-013)
+          value={mcFormat.format(filteredAmount ?? 0, currency)}
         />
       )}
     </View>

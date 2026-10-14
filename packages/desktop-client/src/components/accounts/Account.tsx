@@ -61,6 +61,8 @@ import { SchedulesProvider } from '#hooks/useCachedSchedules';
 import { useCategories } from '#hooks/useCategories';
 import { useDateFormat } from '#hooks/useDateFormat';
 import { useLocalPref } from '#hooks/useLocalPref';
+// [fork:mc D-013]
+import { useAccountCurrency } from '#hooks/useMultiCurrency';
 import { usePayees } from '#hooks/usePayees';
 import { getSchedulesQuery } from '#hooks/useSchedules';
 import { SelectedProviderWithItems } from '#hooks/useSelected';
@@ -263,6 +265,9 @@ type AccountInternalProps = {
   onUnlinkAccount: (id: AccountEntity['id']) => void;
   onSyncAndDownload: (accountId?: AccountEntity['id']) => void;
   onCreatePayee: (name: PayeeEntity['name']) => Promise<PayeeEntity['id']>;
+  // [fork:mc D-013] The register shows a foreign-currency account in its own
+  // currency, so running and filtered balances sum `mc_amount`
+  isAccountCurrencyView?: boolean;
 };
 
 type AccountInternalState = {
@@ -709,9 +714,16 @@ class AccountInternal extends PureComponent<
 
     const { data }: { data: { id: string; balance: number }[] } =
       await aqlQuery(
-        this.paged.query
-          .options({ splits: 'none' })
-          .select([{ balance: { $sumOver: '$amount' } }]),
+        this.paged.query.options({ splits: 'none' }).select([
+          {
+            // [fork:mc D-013]
+            balance: {
+              $sumOver: this.props.isAccountCurrencyView
+                ? '$mc_amount'
+                : '$amount',
+            },
+          },
+        ]),
       );
 
     return data.reduce((balances: Record<string, number>, row) => {
@@ -1062,7 +1074,10 @@ class AccountInternal extends PureComponent<
     }
 
     const { data: amount } = await aqlQuery(
-      this.paged.query.calculate({ $sum: '$amount' }),
+      this.paged.query.calculate({
+        // [fork:mc D-013]
+        $sum: this.props.isAccountCurrencyView ? '$mc_amount' : '$amount',
+      }),
     );
     return amount;
   };
@@ -2061,6 +2076,10 @@ export function Account() {
     state => state.transactions.matchedTransactions,
   );
   const { data: accounts = [] } = useAccounts();
+  // [fork:mc D-013]
+  const { isForeign: isAccountCurrencyView } = useAccountCurrency(
+    accounts.find(account => account.id === params.id),
+  );
   const { data: payees = [] } = usePayees();
   const dateFormat = useDateFormat() || 'MM/dd/yyyy';
   const [hideFraction] = useSyncedPref('hideFraction');
@@ -2153,6 +2172,8 @@ export function Account() {
             onUnlinkAccount={onUnlinkAccount}
             onSyncAndDownload={onSyncAndDownload}
             onCreatePayee={onCreatePayee}
+            // [fork:mc D-013]
+            isAccountCurrencyView={isAccountCurrencyView}
           />
         </SplitsExpandedProvider>
       </SchedulesProvider>

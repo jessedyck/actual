@@ -1,6 +1,6 @@
 // @ts-strict-ignore
 // TODO: remove strict
-import { useCallback, useLayoutEffect, useRef } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 import type { RefObject } from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
 
@@ -28,6 +28,9 @@ import type {
 
 import { FeatureErrorFallback } from '#components/FeatureErrorFallback';
 import type { TableHandleRef } from '#components/table';
+// [fork:mc D-013]
+import { useAccountCurrencyRegister } from '#hooks/useAccountCurrencyRegister';
+import type { AccountCurrencyRegister } from '#hooks/useAccountCurrencyRegister';
 import { isValidBoundaryDrop } from '#hooks/useDragDrop';
 import type { DropPosition } from '#hooks/useDragDrop';
 import { useNavigate } from '#hooks/useNavigate';
@@ -60,20 +63,39 @@ import type { TransactionTableProps } from './TransactionsTable';
 // differently than a full refresh. It's up to you to decide which
 // one to use when doing updates.
 
-async function saveDiff(diff, learnCategories) {
+// [fork:mc D-013] `mcRegister` converts between the register's
+// account-currency view and real fields; it is a no-op for other accounts
+async function saveDiff(
+  diff,
+  learnCategories,
+  mcRegister?: AccountCurrencyRegister,
+) {
   const remoteUpdates = await send('transactions-batch-update', {
-    ...diff,
+    ...(mcRegister ? mcRegister.diffFromView(diff) : diff),
     learnCategories,
   });
 
   if (remoteUpdates && remoteUpdates.updated.length > 0) {
-    return { updates: remoteUpdates };
+    return {
+      updates: mcRegister
+        ? {
+            ...remoteUpdates,
+            updated: mcRegister.updatesToView(remoteUpdates.updated),
+          }
+        : remoteUpdates,
+    };
   }
   return {};
 }
 
-async function saveDiffAndApply(diff, changes, onChange, learnCategories) {
-  const remoteDiff = await saveDiff(diff, learnCategories);
+async function saveDiffAndApply(
+  diff,
+  changes,
+  onChange,
+  learnCategories,
+  mcRegister?: AccountCurrencyRegister,
+) {
+  const remoteDiff = await saveDiff(diff, learnCategories, mcRegister);
   onChange(
     // TODO:
     // @ts-expect-error - fix me
@@ -162,7 +184,7 @@ export function TransactionList({
   onSort,
   sortField,
   ascDesc,
-  onChange,
+  onChange: onChangeProp,
   onRefetch,
   onCloseAddTransaction,
   onCreatePayee,
@@ -182,18 +204,43 @@ export function TransactionList({
   const [learnCategories = 'true'] = useSyncedPref('learn-categories');
   const isLearnCategoriesEnabled = String(learnCategories) === 'true';
 
+  // [fork:mc D-013] A foreign-currency account's register works in the
+  // account's currency: transactions come in swapped and go out swapped back
+  const mcRegister = useAccountCurrencyRegister(account);
+  const viewTransactions = useMemo(
+    () => mcRegister.toView(transactions),
+    [mcRegister, transactions],
+  );
+  const viewAllTransactions = useMemo(
+    () => mcRegister.toView(allTransactions),
+    [mcRegister, allTransactions],
+  );
+  const onChange = useCallback(
+    (transaction: TransactionEntity, changed: TransactionEntity[]) => {
+      onChangeProp(
+        mcRegister.fromView([transaction])[0],
+        mcRegister.fromView(changed),
+      );
+    },
+    [mcRegister, onChangeProp],
+  );
+
   const transactionsLatest = useRef<readonly TransactionEntity[]>([]);
   useLayoutEffect(() => {
-    transactionsLatest.current = transactions;
-  }, [transactions]);
+    transactionsLatest.current = viewTransactions;
+  }, [viewTransactions]);
 
   const onAdd = useCallback(
     async (newTransactions: TransactionEntity[]) => {
       newTransactions = realizeTempTransactions(newTransactions);
-      await saveDiff({ added: newTransactions }, isLearnCategoriesEnabled);
+      await saveDiff(
+        { added: newTransactions },
+        isLearnCategoriesEnabled,
+        mcRegister,
+      );
       onRefetch();
     },
-    [isLearnCategoriesEnabled, onRefetch],
+    [isLearnCategoriesEnabled, onRefetch, mcRegister],
   );
 
   const onSave = useCallback(
@@ -209,7 +256,7 @@ export function TransactionList({
           const dateChanged = !!changes.diff.updated[0].date;
           if (dateChanged) {
             changes.diff.updated[0].sort_order = Date.now();
-            await saveDiff(changes.diff, isLearnCategoriesEnabled);
+            await saveDiff(changes.diff, isLearnCategoriesEnabled, mcRegister);
             onRefetch();
           } else {
             onChange(changes.newTransaction, changes.data);
@@ -218,6 +265,7 @@ export function TransactionList({
               changes,
               onChange,
               isLearnCategoriesEnabled,
+              mcRegister,
             );
           }
         }
@@ -225,7 +273,7 @@ export function TransactionList({
 
       await saveTransaction();
     },
-    [isLearnCategoriesEnabled, onChange, onRefetch],
+    [isLearnCategoriesEnabled, onChange, onRefetch, mcRegister],
   );
 
   const onAddSplit = useCallback(
@@ -237,10 +285,11 @@ export function TransactionList({
         changes,
         onChange,
         isLearnCategoriesEnabled,
+        mcRegister,
       );
       return changes.diff.added[0].id;
     },
-    [isLearnCategoriesEnabled, onChange],
+    [isLearnCategoriesEnabled, onChange, mcRegister],
   );
 
   const onSplit = useCallback(
@@ -256,10 +305,11 @@ export function TransactionList({
         changes,
         onChange,
         isLearnCategoriesEnabled,
+        mcRegister,
       );
       return changes.diff.added[0].id;
     },
-    [isLearnCategoriesEnabled, onChange],
+    [isLearnCategoriesEnabled, onChange, mcRegister],
   );
 
   const onApplyRules = useCallback(
@@ -268,7 +318,21 @@ export function TransactionList({
       updatedFieldName: string | null = null,
       clearedFields?: ClearedFieldsByTransaction,
     ) => {
-      const afterRules = await send('rules-run', { transaction });
+      // [fork:mc D-013] Rules see real fields; in a foreign-currency
+      // register they can't change the amount being typed
+      const afterRules = mcRegister.isActive
+        ? {
+            ...(await send('rules-run', {
+              transaction: {
+                ...transaction,
+                amount: 0,
+                mc_amount: transaction.amount,
+              },
+            })),
+            amount: transaction.amount,
+            mc_amount: transaction.mc_amount,
+          }
+        : await send('rules-run', { transaction });
 
       // Show formula errors if any
       if (afterRules._ruleErrors && afterRules._ruleErrors.length > 0) {
@@ -290,7 +354,7 @@ export function TransactionList({
         clearedFields,
       );
     },
-    [dispatch],
+    [dispatch, mcRegister],
   );
 
   const onManagePayees = useCallback(
@@ -494,7 +558,8 @@ export function TransactionList({
     <ErrorBoundary FallbackComponent={FeatureErrorFallback}>
       <TransactionTable
         ref={tableRef}
-        transactions={allTransactions}
+        // [fork:mc D-013]
+        transactions={viewAllTransactions}
         loadMoreTransactions={loadMoreTransactions}
         accounts={accounts}
         categoryGroups={categoryGroups}

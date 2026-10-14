@@ -125,6 +125,8 @@ import type {
   OnDropCallback,
 } from '#hooks/useDragDrop';
 import { useLocalPref } from '#hooks/useLocalPref';
+// [fork:mc D-013]
+import { useMcBudgetAmountTitle } from '#hooks/useMcBudgetAmountTitle';
 import { useMergedRefs } from '#hooks/useMergedRefs';
 import { usePrevious } from '#hooks/usePrevious';
 import { useProperFocus } from '#hooks/useProperFocus';
@@ -1134,6 +1136,9 @@ const Transaction = memo(function Transaction({
   const setSyncTransferDate = (checked: boolean) =>
     setSyncTransferDatePref(checked ? 'true' : 'false');
   const transferDateSyncSeq = useRef(0);
+  // [fork:mc D-013] In a foreign-currency register, amounts are in the
+  // account's currency; the tooltip gives the budget amount
+  const mcBudgetTitle = useMcBudgetAmountTitle(originalTransaction);
 
   const onUpdate: TransactionUpdateFunction = async (name, value) => {
     // Had some issues with this is called twice which is a problem now that we are showing a warning
@@ -1997,7 +2002,8 @@ const Transaction = memo(function Transaction({
             }
             valueStyle={valueStyle}
             textAlign="right"
-            title={debit}
+            // [fork:mc D-013]
+            title={mcBudgetTitle ?? debit}
             onExpose={name => !isPreview && onEdit(id, name)}
             style={{
               ...(isParent && { fontStyle: 'italic' }),
@@ -2032,7 +2038,8 @@ const Transaction = memo(function Transaction({
             }
             valueStyle={valueStyle}
             textAlign="right"
-            title={credit}
+            // [fork:mc D-013]
+            title={mcBudgetTitle ?? credit}
             onExpose={name => !isPreview && onEdit(id, name)}
             style={{
               ...(isParent && { fontStyle: 'italic' }),
