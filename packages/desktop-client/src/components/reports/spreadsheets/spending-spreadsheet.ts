@@ -16,6 +16,9 @@ import { resolveSpendingAverageRange } from '#components/reports/spendingAverage
 import { fromDateRepr } from '#components/reports/util';
 import type { useSpreadsheet } from '#hooks/useSpreadsheet';
 import { aqlQuery } from '#queries/aqlQuery';
+// [fork:mc D-015]
+import { prepareFlowConversion } from '#reports/mcReportValuation';
+import type { McValuationConfig } from '#reports/mcReportValuation';
 
 import {
   filterCategoriesByConditions,
@@ -30,6 +33,8 @@ type createSpendingSpreadsheetProps = {
   compareTo?: string;
   averageRange?: SpendingAverageRange;
   budgetType?: 'envelope' | 'tracking';
+  // [fork:mc D-015] Amounts in the display currency
+  mcValuation?: McValuationConfig | null;
 };
 
 export function getSpendingBudgetFilters({
@@ -74,6 +79,7 @@ export function createSpendingSpreadsheet({
   compareTo,
   averageRange,
   budgetType = 'envelope',
+  mcValuation,
 }: createSpendingSpreadsheetProps) {
   const compareMonth = compare ?? monthUtils.currentMonth();
   const compareToMonth = compareTo ?? monthUtils.subMonths(compareMonth, 1);
@@ -111,6 +117,26 @@ export function createSpendingSpreadsheet({
 
     const conditionsOpKey = conditionsOp === 'or' ? '$or' : '$and';
 
+    // [fork:mc D-015] In another currency each day's amounts are converted
+    // at that day's rate, and the compared month's budget at its average
+    const conversion = mcValuation
+      ? await prepareFlowConversion(mcValuation, {
+          startDate: startDate < startDateTo ? startDate : startDateTo,
+          endDate: endDate > endDateTo ? endDate : endDateTo,
+        })
+      : null;
+    // The query results are fresh objects, converted in place
+    const convertDays = (rows: Array<{ date: string; amount: number }>) => {
+      for (const row of conversion ? rows : []) {
+        row.amount = conversion.convert(row.date, row.amount);
+      }
+    };
+    const convertBudgets = (rows: Array<{ amount: number }>) => {
+      for (const row of conversion ? rows : []) {
+        row.amount = conversion.convert(compareMonth, row.amount);
+      }
+    };
+
     const [assets, debts] = await Promise.all([
       aqlQuery(
         makeQuery(
@@ -121,7 +147,10 @@ export function createSpendingSpreadsheet({
           conditionsOpKey,
           filters,
         ),
-      ).then(({ data }) => data),
+      ).then(({ data }) => {
+        convertDays(data);
+        return data;
+      }),
       aqlQuery(
         makeQuery(
           'debts',
@@ -131,7 +160,10 @@ export function createSpendingSpreadsheet({
           conditionsOpKey,
           filters,
         ),
-      ).then(({ data }) => data),
+      ).then(({ data }) => {
+        convertDays(data);
+        return data;
+      }),
     ]);
 
     const [assetsTo, debtsTo] = await Promise.all([
@@ -144,7 +176,10 @@ export function createSpendingSpreadsheet({
           conditionsOpKey,
           filters,
         ),
-      ).then(({ data }) => data),
+      ).then(({ data }) => {
+        convertDays(data);
+        return data;
+      }),
       aqlQuery(
         makeQuery(
           'debts',
@@ -154,7 +189,10 @@ export function createSpendingSpreadsheet({
           conditionsOpKey,
           filters,
         ),
-      ).then(({ data }) => data),
+      ).then(({ data }) => {
+        convertDays(data);
+        return data;
+      }),
     ]);
 
     const overlapAssets =
@@ -220,7 +258,10 @@ export function createSpendingSpreadsheet({
             { category: { $id: '$category' } },
             { amount: { $sum: '$amount' } },
           ]),
-      ).then(({ data }) => data),
+      ).then(({ data }) => {
+        convertBudgets(data);
+        return data;
+      }),
     ]);
 
     const dailyBudget =

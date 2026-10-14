@@ -27,6 +27,9 @@ import { Warning } from '#components/alerts';
 import { AppliedFilters } from '#components/filters/AppliedFilters';
 import { FinancialText } from '#components/FinancialText';
 import { MobileBackButton } from '#components/mobile/MobileBackButton';
+// [fork:mc D-015]
+import { McReportCurrencyProvider } from '#components/multi-currency/McReportCurrencyProvider';
+import { McReportCurrencySelect } from '#components/multi-currency/McReportCurrencySelect';
 import { MobilePageHeader, Page, PageHeader } from '#components/Page';
 import { PrivacyFilter } from '#components/PrivacyFilter';
 import { ChooseGraph } from '#components/reports/ChooseGraph';
@@ -62,6 +65,7 @@ import { useDateFormat } from '#hooks/useDateFormat';
 import { useFormat } from '#hooks/useFormat';
 import { useLocale } from '#hooks/useLocale';
 import { useLocalPref } from '#hooks/useLocalPref';
+import { useMcReportCurrencyContext } from '#hooks/useMcReportCurrency';
 import { useNavigate } from '#hooks/useNavigate';
 import { usePayees } from '#hooks/usePayees';
 import { useReport as useCustomReport } from '#hooks/useReport';
@@ -128,12 +132,15 @@ export function CustomReport() {
     return <LoadingIndicator />;
   }
 
+  // [fork:mc D-015] Can be shown in another currency
   return (
-    <CustomReportInner
-      key={report?.id}
-      report={report}
-      budgetType={budgetType}
-    />
+    <McReportCurrencyProvider>
+      <CustomReportInner
+        key={report?.id}
+        report={report}
+        budgetType={budgetType}
+      />
+    </McReportCurrencyProvider>
   );
 }
 
@@ -520,6 +527,8 @@ function CustomReportInner({
     });
   }, [balanceTypeOp, conditions, onApplyFilter]);
 
+  // [fork:mc D-015]
+  const mcValuation = useMcReportCurrencyContext()?.valuation ?? null;
   const getGroupData = useMemo(() => {
     return createGroupedSpreadsheet({
       startDate,
@@ -537,6 +546,7 @@ function CustomReportInner({
       balanceTypeOp,
       sortByOp,
       firstDayOfWeekIdx,
+      mcValuation,
     });
   }, [
     startDate,
@@ -554,6 +564,7 @@ function CustomReportInner({
     trimIntervals,
     sortByOp,
     firstDayOfWeekIdx,
+    mcValuation,
   ]);
 
   const getGraphData = useMemo(() => {
@@ -580,6 +591,7 @@ function CustomReportInner({
       graphType,
       firstDayOfWeekIdx,
       dateFormat,
+      mcValuation,
     });
   }, [
     startDate,
@@ -604,6 +616,7 @@ function CustomReportInner({
     graphType,
     firstDayOfWeekIdx,
     dateFormat,
+    mcValuation,
   ]);
   const graphData = useReport('default', getGraphData);
   const groupedData = useReport('grouped', getGroupData);
@@ -962,6 +975,10 @@ function CustomReportInner({
               defaultItems={defaultItems}
             />
           )}
+          {/* [fork:mc D-015] */}
+          <McReportCurrencySelect
+            style={{ alignSelf: 'flex-end', marginBottom: 10, marginRight: 5 }}
+          />
           {(conditions.length > 0 || hasWarning) && (
             <View
               style={{

@@ -26,6 +26,8 @@ import {
 import type { QueryDataEntity } from '#components/reports/ReportOptions';
 import { resolveTagScope } from '#components/reports/tagScope';
 import type { useSpreadsheet } from '#hooks/useSpreadsheet';
+// [fork:mc D-015]
+import type { McValuationConfig } from '#reports/mcReportValuation';
 
 import { calculateLegend } from './calculateLegend';
 import { fetchSpreadsheetQueryData } from './fetchSpreadsheetQueryData';
@@ -66,6 +68,8 @@ export type createCustomSpreadsheetProps = {
   graphType?: string;
   firstDayOfWeekIdx?: SyncedPrefs['firstDayOfWeekIdx'];
   dateFormat?: SyncedPrefs['dateFormat'];
+  // [fork:mc D-015] Amounts in the display currency
+  mcValuation?: McValuationConfig | null;
 };
 
 export function createCustomSpreadsheet({
@@ -91,6 +95,7 @@ export function createCustomSpreadsheet({
   graphType,
   firstDayOfWeekIdx,
   dateFormat,
+  mcValuation,
 }: createCustomSpreadsheetProps) {
   const [categoryList, categoryGroup] = categoryLists(categories);
   const [initialGroups, groupByLabel] = groupBySelections(
@@ -147,6 +152,7 @@ export function createCustomSpreadsheet({
       filters,
       budgetType,
       groupBy,
+      mcValuation,
     }));
 
     if (groupBy === 'Tag') {

@@ -27,6 +27,9 @@ import { EditablePageHeaderTitle } from '#components/EditablePageHeaderTitle';
 import { AppliedFilters } from '#components/filters/AppliedFilters';
 import { FilterButton } from '#components/filters/FiltersMenu';
 import { MobileBackButton } from '#components/mobile/MobileBackButton';
+// [fork:mc D-015]
+import { McReportCurrencyProvider } from '#components/multi-currency/McReportCurrencyProvider';
+import { McReportCurrencySelect } from '#components/multi-currency/McReportCurrencySelect';
 import { MobilePageHeader, Page, PageHeader } from '#components/Page';
 import { PrivacyFilter } from '#components/PrivacyFilter';
 import { SpendingGraph } from '#components/reports/graphs/SpendingGraph';
@@ -47,6 +50,7 @@ import { fromDateRepr } from '#components/reports/util';
 import { useDashboardWidget } from '#hooks/useDashboardWidget';
 import { useFormat } from '#hooks/useFormat';
 import { useLocale } from '#hooks/useLocale';
+import { useMcReportCurrencyContext } from '#hooks/useMcReportCurrency';
 import { useNavigate } from '#hooks/useNavigate';
 import { useRuleConditionFilters } from '#hooks/useRuleConditionFilters';
 import { useSyncedPref } from '#hooks/useSyncedPref';
@@ -65,7 +69,12 @@ export function Spending() {
     return <LoadingIndicator />;
   }
 
-  return <SpendingInternal widget={widget} />;
+  // [fork:mc D-015] Can be shown in another currency
+  return (
+    <McReportCurrencyProvider>
+      <SpendingInternal widget={widget} />
+    </McReportCurrencyProvider>
+  );
 }
 
 type SpendingInternalProps = {
@@ -148,6 +157,8 @@ function SpendingInternal({ widget }: SpendingInternalProps) {
     void run();
   }, [locale]);
 
+  // [fork:mc D-015]
+  const mcValuation = useMcReportCurrencyContext()?.valuation ?? null;
   const getGraphData = useMemo(
     () =>
       createSpendingSpreadsheet({
@@ -157,8 +168,17 @@ function SpendingInternal({ widget }: SpendingInternalProps) {
         compareTo,
         averageRange,
         budgetType,
+        mcValuation,
       }),
-    [conditions, conditionsOp, compare, compareTo, averageRange, budgetType],
+    [
+      conditions,
+      conditionsOp,
+      compare,
+      compareTo,
+      averageRange,
+      budgetType,
+      mcValuation,
+    ],
   );
 
   const data = useReport('default', getGraphData);
@@ -412,6 +432,8 @@ function SpendingInternal({ widget }: SpendingInternalProps) {
                 <Trans>Average</Trans>
               </ModeButton>
             </SpaceBetween>
+            {/* [fork:mc D-015] */}
+            <McReportCurrencySelect style={{ marginLeft: 15 }} />
 
             <View
               style={{

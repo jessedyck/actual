@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import type { ComponentProps } from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
 import { Trans } from 'react-i18next';
 
@@ -17,6 +18,8 @@ import type {
 } from '@actual-app/core/types/models';
 import type { SyncedPrefs } from '@actual-app/core/types/prefs';
 
+// [fork:mc D-015]
+import { McReportCurrencyProvider } from '#components/multi-currency/McReportCurrencyProvider';
 import { ChooseGraph } from '#components/reports/ChooseGraph';
 import { getLiveRange } from '#components/reports/getLiveRange';
 import { LoadingIndicator } from '#components/reports/LoadingIndicator';
@@ -25,6 +28,8 @@ import { createCustomSpreadsheet } from '#components/reports/spreadsheets/custom
 import { createGroupedSpreadsheet } from '#components/reports/spreadsheets/grouped-spreadsheet';
 import { useReport } from '#components/reports/useReport';
 import { useDateFormat } from '#hooks/useDateFormat';
+// [fork:mc D-015]
+import { useMcReportCurrencyContext } from '#hooks/useMcReportCurrency';
 import { useSyncedPref } from '#hooks/useSyncedPref';
 
 function ErrorFallback() {
@@ -66,7 +71,16 @@ function convertRangeInclusive(
   }
 }
 
-export function GetCardData({
+// [fork:mc D-015] Can be shown in another currency
+export function GetCardData(props: ComponentProps<typeof GetCardDataInner>) {
+  return (
+    <McReportCurrencyProvider>
+      <GetCardDataInner {...props} />
+    </McReportCurrencyProvider>
+  );
+}
+
+function GetCardDataInner({
   report,
   payees,
   accounts,
@@ -126,6 +140,8 @@ export function GetCardData({
     intervals = monthUtils[rangeInclusive](intervalDateStart, intervalDateEnd);
   }
 
+  // [fork:mc D-015]
+  const mcValuation = useMcReportCurrencyContext()?.valuation ?? null;
   const getGroupData = useMemo(() => {
     return createGroupedSpreadsheet({
       startDate,
@@ -143,8 +159,17 @@ export function GetCardData({
       balanceTypeOp: ReportOptions.balanceTypeMap.get(report.balanceType),
       firstDayOfWeekIdx,
       sortByOp: report.sortBy,
+      mcValuation,
     });
-  }, [report, categories, startDate, endDate, firstDayOfWeekIdx, budgetType]);
+  }, [
+    report,
+    categories,
+    startDate,
+    endDate,
+    firstDayOfWeekIdx,
+    budgetType,
+    mcValuation,
+  ]);
   const getGraphData = useMemo(() => {
     return createCustomSpreadsheet({
       startDate,
@@ -169,6 +194,7 @@ export function GetCardData({
       firstDayOfWeekIdx,
       sortByOp: report.sortBy,
       dateFormat,
+      mcValuation,
     });
   }, [
     report,
@@ -183,6 +209,7 @@ export function GetCardData({
     // Load-bearing: without this the card keeps its old interval labels after
     // the date format preference changes, until something else invalidates it.
     dateFormat,
+    mcValuation,
   ]);
   const graphData = useReport('default' + report.name, getGraphData);
   const groupedData = useReport('grouped' + report.name, getGroupData);

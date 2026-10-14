@@ -9,6 +9,8 @@ import * as monthUtils from '@actual-app/core/shared/months';
 import type { SpendingWidget } from '@actual-app/core/types/models';
 
 import { FinancialText } from '#components/FinancialText';
+// [fork:mc D-015]
+import { McReportCurrencyProvider } from '#components/multi-currency/McReportCurrencyProvider';
 import { PrivacyFilter } from '#components/PrivacyFilter';
 import { DateRange } from '#components/reports/DateRange';
 import { SpendingGraph } from '#components/reports/graphs/SpendingGraph';
@@ -23,6 +25,7 @@ import {
 import { createSpendingSpreadsheet } from '#components/reports/spreadsheets/spending-spreadsheet';
 import { useReport } from '#components/reports/useReport';
 import { useFormat } from '#hooks/useFormat';
+import { useMcReportCurrencyContext } from '#hooks/useMcReportCurrency';
 import { useSyncedPref } from '#hooks/useSyncedPref';
 
 type SpendingCardProps = {
@@ -32,7 +35,16 @@ type SpendingCardProps = {
   onMetaChange: (newMeta: SpendingWidget['meta']) => void;
 };
 
-export function SpendingCard({
+// [fork:mc D-015] Can be shown in another currency
+export function SpendingCard(props: SpendingCardProps) {
+  return (
+    <McReportCurrencyProvider>
+      <SpendingCardInner {...props} />
+    </McReportCurrencyProvider>
+  );
+}
+
+function SpendingCardInner({
   widgetId,
   isEditing,
   meta = {},
@@ -55,6 +67,8 @@ export function SpendingCard({
 
   const selection =
     spendingReportMode === 'single-month' ? 'compareTo' : spendingReportMode;
+  // [fork:mc D-015]
+  const mcValuation = useMcReportCurrencyContext()?.valuation ?? null;
   const getGraphData = useMemo(() => {
     return createSpendingSpreadsheet({
       conditions: meta?.conditions,
@@ -63,6 +77,7 @@ export function SpendingCard({
       compareTo,
       averageRange,
       budgetType,
+      mcValuation,
     });
   }, [
     meta?.conditions,
@@ -71,6 +86,7 @@ export function SpendingCard({
     compareTo,
     averageRange,
     budgetType,
+    mcValuation,
   ]);
 
   const data = useReport('default', getGraphData);

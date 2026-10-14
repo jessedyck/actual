@@ -162,16 +162,36 @@ export async function prepareNetWorthValuation(
 }
 
 export type McFlowConversion = {
-  /** An amount of a period (`YYYY-MM` month or `YYYY-MM-DD` day) */
+  /** An amount of a period: a `YYYY` year, `YYYY-MM` month or `YYYY-MM-DD` day */
   convert: (period: string, amount: number) => number;
   /** A balance at the end of `date` */
   convertAt: (date: string, amount: number) => number;
 };
 
+/** The first and last day covered by period bounds of any granularity. */
+export function getPeriodDays(
+  start: string,
+  end: string,
+): { startDate: string; endDate: string } {
+  const first = (period: string) =>
+    period.length === 4
+      ? `${period}-01-01`
+      : period.length === 7
+        ? monthUtils.firstDayOfMonth(period)
+        : period;
+  const last = (period: string) =>
+    period.length === 4
+      ? `${period}-12-31`
+      : period.length === 7
+        ? monthUtils.lastDayOfMonth(period)
+        : period;
+  return { startDate: first(start), endDate: last(end) };
+}
+
 /**
  * Converts budget-currency flows into the display currency: a day's flows
- * at that day's rate, a month's at the average of its daily rates. Null
- * when the display currency is the budget currency.
+ * at that day's rate, a month's or a year's at the average of its daily
+ * rates. Null when the display currency is the budget currency.
  */
 export async function prepareFlowConversion(
   { budgetCurrency, displayCurrency }: McValuationConfig,
@@ -196,20 +216,22 @@ export async function prepareFlowConversion(
     dates: [...days, lastDay, ...extraDates],
   });
 
-  const monthly = new Map<string, { sum: number; count: number }>();
+  // Average daily rates per month (`YYYY-MM`) and per year (`YYYY`)
+  const averages = new Map<string, { sum: number; count: number }>();
   for (const day of days) {
     const rate = rates[day];
     if (rate != null) {
-      const month = monthUtils.getMonth(day);
-      const entry = monthly.get(month) ?? { sum: 0, count: 0 };
-      monthly.set(month, { sum: entry.sum + rate, count: entry.count + 1 });
+      for (const period of [day.slice(0, 7), day.slice(0, 4)]) {
+        const entry = averages.get(period) ?? { sum: 0, count: 0 };
+        averages.set(period, { sum: entry.sum + rate, count: entry.count + 1 });
+      }
     }
   }
   const latestRate = rates[lastDay] ?? null;
 
   const rateFor = (period: string): number | null => {
-    if (period.length === 7) {
-      const entry = monthly.get(period);
+    if (period.length === 4 || period.length === 7) {
+      const entry = averages.get(period);
       return entry ? entry.sum / entry.count : latestRate;
     }
     return rates[period] ?? latestRate;

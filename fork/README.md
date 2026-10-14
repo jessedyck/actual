@@ -38,15 +38,19 @@ the fork can switch to upstream's own implementation as it lands.
 | Exchange rate adjustment to today's value (desktop)                            | Done    |
 | Net worth report: accounts valued at each period's rate, shown in any currency | Done    |
 | Cash flow report (page and card) in any currency                               | Done    |
-| Custom and spending reports in another currency                                | Planned |
+| Custom and spending reports (pages and cards) in any currency                  | Done    |
+| Other reports (summary, budget analysis, calendar…) in another currency        | Planned |
 
 ## Log
 
 What was done, newest first. All of it was implemented by an AI assistant;
 [DEVIATIONS.md](DEVIATIONS.md) has the details of every change.
 
+- **2026-10-14** · Custom reports and the spending comparison (pages and
+  dashboard cards) in any currency, each period at its own rate.
 - **2026-10-14** · Cash flow report (page and dashboard card) in any
   currency, each day or month at its own rate.
+  [ad24fc3](https://github.com/jessedyck/actual/commit/ad24fc3)
 - **2026-10-14** · Net worth report: accounts in other currencies are
   valued at the rate of each period, and the report (page and dashboard
   card) can be shown in any currency.

@@ -8,11 +8,43 @@ import type { SyncedPrefs } from '@actual-app/core/types/prefs';
 
 import type { QueryDataEntity } from '#components/reports/ReportOptions';
 import { aqlQuery } from '#queries/aqlQuery';
+// [fork:mc D-015]
+import {
+  getPeriodDays,
+  prepareFlowConversion,
+} from '#reports/mcReportValuation';
+import type { McValuationConfig } from '#reports/mcReportValuation';
 
 import { fetchBudgetData } from './budgetDataQuery';
 import { makeQuery } from './makeQuery';
 
-export async function fetchSpreadsheetQueryData({
+export async function fetchSpreadsheetQueryData(
+  args: Parameters<typeof fetchUpstreamQueryData>[0] & {
+    mcValuation?: McValuationConfig | null;
+  },
+): Promise<{ assets: QueryDataEntity[]; debts: QueryDataEntity[] }> {
+  // [fork:mc D-015] In another currency, each row (one period's sum) is
+  // converted at that period's rate before the report adds rows up
+  const { mcValuation, ...upstreamArgs } = args;
+  const result = await fetchUpstreamQueryData(upstreamArgs);
+  const conversion = mcValuation
+    ? await prepareFlowConversion(
+        mcValuation,
+        getPeriodDays(args.startDate, args.endDate),
+      )
+    : null;
+  if (!conversion) {
+    return result;
+  }
+  const convert = (rows: QueryDataEntity[]) =>
+    rows.map(row => ({
+      ...row,
+      amount: conversion.convert(row.date, row.amount),
+    }));
+  return { assets: convert(result.assets), debts: convert(result.debts) };
+}
+
+async function fetchUpstreamQueryData({
   balanceTypeOp,
   startDate,
   endDate,

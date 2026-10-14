@@ -35,6 +35,8 @@ export function createGroupedSpreadsheet({
   balanceTypeOp,
   sortByOp,
   firstDayOfWeekIdx,
+  // [fork:mc D-015]
+  mcValuation,
 }: createCustomSpreadsheetProps) {
   const [categoryList, categoryGroup] = categoryLists(categories);
 
@@ -67,6 +69,7 @@ export function createGroupedSpreadsheet({
       conditionsOpKey,
       filters,
       budgetType,
+      mcValuation,
     }));
 
     if (interval === 'Weekly' && balanceTypeOp !== 'totalBudgeted') {

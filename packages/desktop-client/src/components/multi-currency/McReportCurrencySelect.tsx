@@ -1,5 +1,6 @@
 // [fork:mc D-015] Picks the currency a supported report is shown in. The
 // choice is shared by every supported report and dashboard card.
+import type { CSSProperties } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 
 import { Select } from '@actual-app/components/select';
@@ -11,7 +12,11 @@ import { currencies } from '@actual-app/core/shared/currencies';
 import { useAccounts } from '#hooks/useAccounts';
 import { useMcReportCurrencyContext } from '#hooks/useMcReportCurrency';
 
-export function McReportCurrencySelect() {
+export function McReportCurrencySelect({
+  style,
+}: {
+  style?: CSSProperties;
+} = {}) {
   const { t } = useTranslation();
   const reportCurrency = useMcReportCurrencyContext();
   const { data: accounts = [] } = useAccounts();
@@ -40,7 +45,9 @@ export function McReportCurrencySelect() {
     ]);
 
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+    <View
+      style={{ flexDirection: 'row', alignItems: 'center', gap: 5, ...style }}
+    >
       <Select
         value={displayCurrency}
         options={options}
