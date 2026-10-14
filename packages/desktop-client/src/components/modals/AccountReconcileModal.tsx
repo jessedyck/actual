@@ -6,6 +6,11 @@ import { styles } from '@actual-app/components/styles';
 import { Text } from '@actual-app/components/text';
 import { theme } from '@actual-app/components/theme';
 import { View } from '@actual-app/components/view';
+// [fork:mc D-008]
+import {
+  hundredthsToMinorUnits,
+  minorUnitsToHundredths,
+} from '@actual-app/core/shared/multi-currency';
 import {
   amountToInteger,
   integerToAmount,
@@ -22,6 +27,10 @@ import { useDateFormat } from '#hooks/useDateFormat';
 import { useFeatureFlag } from '#hooks/useFeatureFlag';
 import { useFormat } from '#hooks/useFormat';
 import { useLocale } from '#hooks/useLocale';
+// [fork:mc D-008]
+import { useMcAccountBalance } from '#hooks/useMcAccountBalance';
+import { useAccountCurrency } from '#hooks/useMultiCurrency';
+import { useMultiCurrencyFormat } from '#hooks/useMultiCurrencyFormat';
 import { useSheetValue } from '#hooks/useSheetValue';
 import type { Modal as ModalType } from '#modals/modalsSlice';
 import * as bindings from '#spreadsheet/bindings';
@@ -45,14 +54,28 @@ export function AccountReconcileModal({
   const dateFormat = useDateFormat() || 'MM/dd/yyyy';
   const locale = useLocale();
 
+  // [fork:mc D-008] A foreign-currency account reconciles in its own
+  // currency. The input counts hundredths like every amount input; the
+  // amount handed on is in the currency's minor units.
+  const accountCurrency = useAccountCurrency(account);
+  const mcCleared = useMcAccountBalance(
+    accountCurrency.isForeign ? accountId : null,
+  )?.cleared;
+  const mcFormat = useMultiCurrencyFormat();
+  const startingAmount = !accountCurrency.isForeign
+    ? clearedBalance
+    : mcCleared == null
+      ? null
+      : minorUnitsToHundredths(mcCleared, accountCurrency.currency);
+
   const [amount, setAmount] = useState<number | null>(null);
   const [amountInputKey, setAmountInputKey] = useState(0);
 
   useEffect(() => {
-    if (amount == null && clearedBalance != null) {
-      setAmount(clearedBalance);
+    if (amount == null && startingAmount != null) {
+      setAmount(startingAmount);
     }
-  }, [amount, clearedBalance]);
+  }, [amount, startingAmount]);
 
   const lastSyncedBalance = account?.balance_current;
 
@@ -64,7 +87,12 @@ export function AccountReconcileModal({
     if (newAmount == null) {
       return;
     }
-    onReconcile(newAmount);
+    // [fork:mc D-008]
+    onReconcile(
+      accountCurrency.isForeign
+        ? hundredthsToMinorUnits(newAmount, accountCurrency.currency)
+        : newAmount,
+    );
   };
 
   return (
@@ -114,7 +142,16 @@ export function AccountReconcileModal({
               <Text>
                 <Trans>Last Balance from Bank: </Trans>
                 <FinancialText>
-                  {format(lastSyncedBalance, 'financial')}
+                  {/* [fork:mc D-008] The bank reports its own currency */}
+                  {accountCurrency.isForeign
+                    ? mcFormat.format(
+                        hundredthsToMinorUnits(
+                          lastSyncedBalance,
+                          accountCurrency.currency,
+                        ),
+                        accountCurrency.currency,
+                      )
+                    : format(lastSyncedBalance, 'financial')}
                 </FinancialText>
               </Text>
               <Button

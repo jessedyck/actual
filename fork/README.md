@@ -34,7 +34,7 @@ the fork can switch to upstream's own implementation as it lands.
 | Register (desktop): entering and showing amounts in the account's currency | Done    |
 | Reconcile in the account's currency (desktop)                              | Done    |
 | Imports (CSV, OFX, QIF, CAMT) in the account's currency                    | Done    |
-| Mobile: amounts and reconcile in the account's currency                    | Planned |
+| Mobile: amounts and reconcile in the account's currency                    | Done    |
 | Reports with a display-currency selector                                   | Planned |
 
 ## Log
@@ -42,9 +42,14 @@ the fork can switch to upstream's own implementation as it lands.
 What was done, newest first. All of it was implemented by an AI assistant;
 [DEVIATIONS.md](DEVIATIONS.md) has the details of every change.
 
+- **2026-10-14** · Mobile: an account with its own currency shows its
+  balances, transactions and running balances in that currency; amounts are
+  entered in the currency of the chosen account; reconciling works in that
+  currency.
 - **2026-10-14** · Importing files into an account with its own currency:
   amounts are read in that currency, converted at each transaction's date,
   and matched against existing transactions in that currency.
+  [ba7e827](https://github.com/jessedyck/actual/commit/ba7e827)
 - **2026-10-14** · Register: accounts in currencies without decimals (yen,
   won) store what is typed, and scheduled transactions continue the running
   balance in the account's currency.

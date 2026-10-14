@@ -3,6 +3,7 @@ import {
   memo,
   useCallback,
   useEffect,
+  useEffectEvent,
   useMemo,
   useRef,
   useState,
@@ -36,6 +37,11 @@ import { send } from '@actual-app/core/platform/client/connection';
 import { DEFAULT_MAX_DISTANCE_METERS } from '@actual-app/core/shared/constants';
 import { calculateDistance } from '@actual-app/core/shared/location-utils';
 import * as monthUtils from '@actual-app/core/shared/months';
+// [fork:mc D-013]
+import {
+  diffFromAccountCurrencyViews,
+  toAccountCurrencyViews,
+} from '@actual-app/core/shared/multi-currency';
 import { q } from '@actual-app/core/shared/query';
 import { DEFAULT_UPCOMING_SCHEDULE_DAYS } from '@actual-app/core/shared/schedules';
 import {
@@ -80,6 +86,8 @@ import {
   ToggleField,
 } from '#components/mobile/MobileForms';
 import { getPrettyPayee } from '#components/mobile/utils';
+// [fork:mc D-013]
+import { McAmountCurrencyHint } from '#components/multi-currency/McAmountCurrencyHint';
 import { MobilePageHeader, Page } from '#components/Page';
 import { propagateRuleChangeToSubtransactions } from '#components/transactions/applyRulesToTransaction';
 import {
@@ -92,6 +100,8 @@ import { useCategories } from '#hooks/useCategories';
 import { useDateFormat } from '#hooks/useDateFormat';
 import { useLocalPref } from '#hooks/useLocalPref';
 import { useLocationPermission } from '#hooks/useLocationPermission';
+// [fork:mc D-013]
+import { useAccountCurrencyOf } from '#hooks/useMultiCurrency';
 import { useNavigate } from '#hooks/useNavigate';
 import { useNearbyPayees } from '#hooks/useNearbyPayees';
 import { usePayees } from '#hooks/usePayees';
@@ -106,6 +116,8 @@ import { useSavePayeeLocationMutation } from '#payees';
 import { locationService } from '#payees/location';
 import { aqlQuery } from '#queries/aqlQuery';
 import { useDispatch, useSelector } from '#redux';
+// [fork:mc D-013]
+import { runRulesInAccountCurrency } from '#transactions/mcRules';
 import { setLastTransaction } from '#transactions/transactionsSlice';
 import { getStatusLabel } from '#util/schedule';
 import {
@@ -1251,6 +1263,8 @@ const TransactionEditInner = memo<TransactionEditInnerProps>(
               onChange={onTotalAmountUpdate}
               variant="large"
             />
+            {/* [fork:mc D-013] */}
+            <McAmountCurrencyHint accountId={transaction.account} />
           </View>
 
           <View>
@@ -1609,6 +1623,13 @@ function TransactionEditUnconnected({
   >([]);
   const isAdding = useRef(false);
   const isDeleted = useRef(false);
+  // [fork:mc D-013] Amounts are held in each transaction's account
+  // currency, so fetching waits until the accounts are known
+  const currencyOf = useAccountCurrencyOf();
+  const isCurrencyReady = accounts.length > 0;
+  const toEditorView = useEffectEvent((fetched: TransactionEntity[]) =>
+    toAccountCurrencyViews(fetched, currencyOf),
+  );
   const [learnCategories = 'true'] = useSyncedPref('learn-categories');
   const isLearnCategoriesEnabled = String(learnCategories) === 'true';
 
@@ -1657,13 +1678,17 @@ function TransactionEditUnconnected({
       );
 
       if (!unmounted) {
-        const fetchedTransactions = ungroupTransactions(data);
+        // [fork:mc D-013]
+        const fetchedTransactions = toEditorView(ungroupTransactions(data));
         setTransactions(fetchedTransactions);
         setFetchedTransactions(fetchedTransactions);
       }
     }
     if (transactionId !== 'new') {
-      void fetchTransaction();
+      // [fork:mc D-013]
+      if (isCurrencyReady) {
+        void fetchTransaction();
+      }
     } else {
       isAdding.current = true;
     }
@@ -1671,7 +1696,7 @@ function TransactionEditUnconnected({
     return () => {
       unmounted = true;
     };
-  }, [transactionId]);
+  }, [transactionId, isCurrencyReady]);
 
   useEffect(() => {
     if (!isLocationGranted) {
@@ -1744,9 +1769,11 @@ function TransactionEditUnconnected({
           newTransaction.id,
         );
 
-        const afterRules = await send('rules-run', {
-          transaction: newTransaction,
-        });
+        // [fork:mc D-013] Rules see stored fields
+        const afterRules = await runRulesInAccountCurrency(
+          newTransaction,
+          currencyOf(newTransaction.account),
+        );
         const diff = getChangedValues(newTransaction, afterRules);
 
         if (diff) {
@@ -1827,7 +1854,7 @@ function TransactionEditUnconnected({
         }
       }
     },
-    [dateFormat, isLocationGranted],
+    [currencyOf, dateFormat, isLocationGranted],
   );
 
   const onSave = useCallback(
@@ -1836,7 +1863,13 @@ function TransactionEditUnconnected({
         return;
       }
 
-      const changes = diffItems(fetchedTransactions || [], newTransactions);
+      // [fork:mc D-013] Typed amounts are in each account's currency
+      const changes = diffFromAccountCurrencyViews(
+        diffItems(fetchedTransactions || [], newTransactions),
+        id =>
+          newTransactions.find(transaction => transaction.id === id)?.account,
+        currencyOf,
+      );
       if (
         changes.added.length > 0 ||
         changes.updated.length > 0 ||
@@ -1863,7 +1896,7 @@ function TransactionEditUnconnected({
         dispatch(setLastTransaction({ transaction: newTransactions[0] }));
       }
     },
-    [dispatch, fetchedTransactions, isLearnCategoriesEnabled],
+    [currencyOf, dispatch, fetchedTransactions, isLearnCategoriesEnabled],
   );
 
   const onDelete = useCallback(

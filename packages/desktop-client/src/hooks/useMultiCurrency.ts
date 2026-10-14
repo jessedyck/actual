@@ -63,3 +63,20 @@ export function useHasForeignCurrencyAccounts(): boolean {
   const { data: accounts = [] } = useAccounts();
   return accounts.some(account => Boolean(account.mc_currency));
 }
+
+/**
+ * [fork:mc D-013] Looks up an account's currency when it is foreign, for
+ * views that hold transactions of several accounts (the mobile editor).
+ * Returns null for budget-currency and unknown accounts.
+ */
+export function useAccountCurrencyOf(): (
+  accountId: AccountEntity['id'] | null | undefined,
+) => string | null {
+  const { data: accounts = [] } = useAccounts();
+  const state = useMultiCurrency();
+  return accountId => {
+    const account = accounts.find(item => item.id === accountId);
+    const { isForeign, currency } = getAccountCurrencyState(account, state);
+    return isForeign ? currency : null;
+  };
+}

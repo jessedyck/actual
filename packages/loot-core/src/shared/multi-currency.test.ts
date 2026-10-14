@@ -2,6 +2,7 @@
 import {
   convertMinorUnits,
   diffFromAccountCurrencyView,
+  diffFromAccountCurrencyViews,
   fromAccountCurrencyView,
   getAccountCurrency,
   getImpliedRate,
@@ -12,6 +13,7 @@ import {
   minorUnitsToHundredths,
   roundHalfAwayFromZero,
   toAccountCurrencyView,
+  toAccountCurrencyViews,
   updatesToAccountCurrencyView,
 } from './multi-currency';
 
@@ -183,5 +185,65 @@ describe('account-currency register view', () => {
     expect(
       updatesToAccountCurrencyView([{ id: 'y', mc_amount: -2500 }], 'JPY'),
     ).toEqual([{ id: 'y', amount: -250000, mc_amount: -2500 }]);
+  });
+});
+
+// [fork:mc D-013]
+describe('mobile editor in account currencies', () => {
+  const currencyOf = (account: string | null | undefined) =>
+    account === 'cad' ? 'CAD' : account === 'jpy' ? 'JPY' : null;
+
+  it('shows each transaction in its own account currency', () => {
+    const [cad, eur, yen] = toAccountCurrencyViews(
+      [
+        { id: 'a', account: 'cad', amount: -651, mc_amount: -1050 },
+        { id: 'b', account: 'eur', amount: -500, mc_amount: null },
+        { id: 'c', account: 'jpy', amount: -600, mc_amount: -1000 },
+      ],
+      currencyOf,
+    );
+    expect(cad).toMatchObject({ amount: -1050, _mcBudgetAmount: -651 });
+    expect(eur).toEqual({
+      id: 'b',
+      account: 'eur',
+      amount: -500,
+      mc_amount: null,
+    });
+    expect(yen.amount).toBe(-100000);
+  });
+
+  it('stores typed amounts in the currency of the final account', () => {
+    const accounts: Record<string, string> = { a: 'cad', b: 'eur', c: 'cad' };
+    const diff = diffFromAccountCurrencyViews(
+      {
+        added: [
+          { id: 'n1', account: 'cad', amount: -2000 },
+          { id: 'n2', account: 'eur', amount: -2000 },
+          { id: 'n3', account: 'jpy', amount: -150000 },
+        ],
+        updated: [
+          // Amount typed in a CAD account
+          { id: 'a', amount: -3000 },
+          // Moved to a EUR account and retyped: a budget amount
+          { id: 'c', account: 'eur', amount: -900 },
+          // Only moved: the server keeps the budget value
+          { id: 'b', account: 'cad' },
+          { id: 'b', notes: 'x', _mcBudgetAmount: -651 },
+        ],
+      },
+      (id: unknown) => accounts[id as string],
+      currencyOf,
+    );
+    expect(diff.added).toEqual([
+      { id: 'n1', account: 'cad', mc_amount: -2000, amount: 0 },
+      { id: 'n2', account: 'eur', amount: -2000 },
+      { id: 'n3', account: 'jpy', mc_amount: -1500, amount: 0 },
+    ]);
+    expect(diff.updated).toEqual([
+      { id: 'a', mc_amount: -3000 },
+      { id: 'c', account: 'eur', amount: -900 },
+      { id: 'b', account: 'cad' },
+      { id: 'b', notes: 'x' },
+    ]);
   });
 });

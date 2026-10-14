@@ -22,12 +22,19 @@ import {
   useUpdateAccountMutation,
 } from '#accounts';
 import { markAccountRead } from '#accounts/accountsSlice';
+// [fork:mc D-008]
+import {
+  createMcReconciliationTransaction,
+  finishMcReconciliation,
+} from '#accounts/mcReconciliation';
 import * as reconciliation from '#accounts/reconciliation';
 import { ReconcilingBanner } from '#components/mobile/accounts/ReconcilingBanner';
 import { TransactionListWithBalances } from '#components/mobile/transactions/TransactionListWithBalances';
 import { useAccountPreviewTransactions } from '#hooks/useAccountPreviewTransactions';
 import { SchedulesProvider } from '#hooks/useCachedSchedules';
 import { useDateFormat } from '#hooks/useDateFormat';
+// [fork:mc D-013]
+import { useMcAccountListView } from '#hooks/useMcAccountListView';
 import { useNavigate } from '#hooks/useNavigate';
 import { getSchedulesQuery } from '#hooks/useSchedules';
 import { useSheetValue } from '#hooks/useSheetValue';
@@ -172,6 +179,14 @@ function TransactionListWithPreviews({
     [runningBalances, previewRunningBalances],
   );
 
+  // [fork:mc D-013] A foreign-currency account in its own currency
+  const mcListView = useMcAccountListView({
+    account,
+    transactions,
+    previewTransactions,
+  });
+  const isAccountCurrencyView = mcListView !== null;
+
   useEffect(() => {
     if (account.id) {
       dispatch(markAccountRead({ id: account.id }));
@@ -234,7 +249,12 @@ function TransactionListWithPreviews({
   const { onBatchEdit } = useTransactionBatchActions();
 
   const onDoneReconciling = useCallback(async () => {
-    await reconciliation.finishReconciliation(account.id, reconcileAmount);
+    // [fork:mc D-008] Foreign-currency accounts compare account amounts
+    if (isAccountCurrencyView) {
+      await finishMcReconciliation(account.id, reconcileAmount);
+    } else {
+      await reconciliation.finishReconciliation(account.id, reconcileAmount);
+    }
 
     updateAccount({
       account: {
@@ -250,16 +270,23 @@ function TransactionListWithPreviews({
       },
       { replace: true },
     );
-  }, [account, reconcileAmount, setSearchParams, updateAccount]);
+  }, [
+    account,
+    isAccountCurrencyView,
+    reconcileAmount,
+    setSearchParams,
+    updateAccount,
+  ]);
 
   const onCreateReconciliationTransaction = useCallback(
     async (targetDiff: number) => {
-      await reconciliation.createReconciliationTransaction(
-        account.id,
-        targetDiff,
-      );
+      // [fork:mc D-008] Foreign-currency accounts adjust in their currency
+      const createTransaction = isAccountCurrencyView
+        ? createMcReconciliationTransaction
+        : reconciliation.createReconciliationTransaction;
+      await createTransaction(account.id, targetDiff);
     },
-    [account.id],
+    [account.id, isAccountCurrencyView],
   );
 
   const onToggleTransactionCleared = useCallback(
@@ -321,11 +348,17 @@ function TransactionListWithPreviews({
             ? isTransactionsLoading
             : isTransactionsLoading || isPreviewTransactionsLoading
         }
-        transactions={transactionsToDisplay}
+        // [fork:mc D-013] Amounts and balances in the account's currency
+        transactions={
+          mcListView
+            ? mcListView.toView(transactionsToDisplay)
+            : transactionsToDisplay
+        }
         balance={balanceBindings.balance}
         balanceCleared={balanceBindings.cleared}
         balanceUncleared={balanceBindings.uncleared}
-        runningBalances={allBalances}
+        mcAccount={account}
+        runningBalances={mcListView?.runningBalances ?? allBalances}
         showRunningBalances={shouldCalculateRunningBalances}
         isLoadingMore={isLoadingMoreTransactions}
         onLoadMore={fetchMoreTransactions}

@@ -9,10 +9,16 @@ import { Text } from '@actual-app/components/text';
 import { theme } from '@actual-app/components/theme';
 import { View } from '@actual-app/components/view';
 import type { IntegerAmount } from '@actual-app/core/shared/util';
-import type { TransactionEntity } from '@actual-app/core/types/models';
+import type {
+  AccountEntity,
+  TransactionEntity,
+} from '@actual-app/core/types/models';
 
 import { Search } from '#components/common/Search';
 import { PullToRefresh } from '#components/mobile/PullToRefresh';
+// [fork:mc D-012]
+import { McCellValue } from '#components/multi-currency/McCellValue';
+import type { McBalancePart } from '#components/multi-currency/McForeignCellValue';
 import { CellValue, CellValueText } from '#components/spreadsheet/CellValue';
 import { DisplayPayeeProvider } from '#hooks/useDisplayPayee';
 import { SelectedProvider, useSelected } from '#hooks/useSelected';
@@ -89,6 +95,11 @@ type TransactionListWithBalancesProps = {
   isReconciling?: boolean;
   onToggleTransactionCleared?: (transaction: TransactionEntity) => void;
   filtered?: boolean;
+  /**
+   * [fork:mc D-012] The account whose page this is: a foreign-currency
+   * account shows its balances in its own currency.
+   */
+  mcAccount?: AccountEntity;
 };
 
 export function TransactionListWithBalances({
@@ -109,6 +120,7 @@ export function TransactionListWithBalances({
   isReconciling = false,
   onToggleTransactionCleared,
   filtered = false,
+  mcAccount,
 }: TransactionListWithBalancesProps) {
   const selectedInst = useSelected('transactions', [...transactions], []);
 
@@ -133,11 +145,12 @@ export function TransactionListWithBalances({
                 balanceCleared={balanceCleared}
                 balanceUncleared={balanceUncleared}
                 alwaysShowCleared={isReconciling}
+                mcAccount={mcAccount}
               />
             ) : (
               <>
                 <View style={{ flexBasis: '33%' }} />
-                <Balance balance={balance} />
+                <Balance balance={balance} mcAccount={mcAccount} />
                 <View
                   style={{
                     flexBasis: '33%',
@@ -205,14 +218,36 @@ function AppliedFiltersChip() {
 
 const TransactionListBalanceCellValue = <
   FieldName extends SheetFields<'account'> | SheetFields<'category'>,
->(
-  props: ComponentProps<
-    typeof CellValue<
-      FieldName extends SheetFields<'account'> ? 'account' : 'category',
-      FieldName
-    >
-  >,
-) => {
+>({
+  mcAccount,
+  mcPart = 'balance',
+  ...props
+}: ComponentProps<
+  typeof CellValue<
+    FieldName extends SheetFields<'account'> ? 'account' : 'category',
+    FieldName
+  >
+> & {
+  // [fork:mc D-012] Account-currency figure for a foreign-currency account
+  mcAccount?: AccountEntity;
+  mcPart?: McBalancePart;
+}) => {
+  if (mcAccount) {
+    const { children } = props;
+    type ChildProps = Parameters<NonNullable<typeof children>>[0];
+    // Only an account page passes `mcAccount`, so these are its bindings
+    return (
+      <McCellValue<SheetFields<'account'>>
+        account={mcAccount}
+        binding={props.binding as Binding<'account', SheetFields<'account'>>}
+        part={mcPart}
+        type={props.type}
+      >
+        {children &&
+          (childProps => children(childProps as unknown as ChildProps))}
+      </McCellValue>
+    );
+  }
   return <CellValue {...props} />;
 };
 
@@ -225,6 +260,7 @@ type BalanceWithClearedProps = {
   >;
   balance: TransactionListWithBalancesProps['balance'];
   alwaysShowCleared?: boolean;
+  mcAccount?: AccountEntity;
 };
 
 function BalanceWithCleared({
@@ -232,6 +268,7 @@ function BalanceWithCleared({
   balanceCleared,
   balance,
   alwaysShowCleared = false,
+  mcAccount,
 }: BalanceWithClearedProps) {
   const { t } = useTranslation();
   const unclearedAmount = useSheetValue<
@@ -255,6 +292,8 @@ function BalanceWithCleared({
         <TransactionListBalanceCellValue
           binding={balanceCleared}
           type="financial"
+          mcAccount={mcAccount}
+          mcPart="cleared"
         >
           {props => (
             <CellValueText
@@ -269,7 +308,7 @@ function BalanceWithCleared({
           )}
         </TransactionListBalanceCellValue>
       </View>
-      <Balance balance={balance} />
+      <Balance balance={balance} mcAccount={mcAccount} />
       <View
         style={{
           display: !showCleared ? 'none' : undefined,
@@ -283,6 +322,8 @@ function BalanceWithCleared({
         <TransactionListBalanceCellValue
           binding={balanceUncleared}
           type="financial"
+          mcAccount={mcAccount}
+          mcPart="uncleared"
         >
           {props => (
             <CellValueText
@@ -303,14 +344,19 @@ function BalanceWithCleared({
 
 type BalanceProps = {
   balance: TransactionListWithBalancesProps['balance'];
+  mcAccount?: AccountEntity;
 };
 
-function Balance({ balance }: BalanceProps) {
+function Balance({ balance, mcAccount }: BalanceProps) {
   const { t } = useTranslation();
   return (
     <View style={{ flexBasis: '33%' }}>
       <Label title={t('Balance')} style={{ textAlign: 'center' }} />
-      <TransactionListBalanceCellValue binding={balance} type="financial">
+      <TransactionListBalanceCellValue
+        binding={balance}
+        type="financial"
+        mcAccount={mcAccount}
+      >
         {props => (
           <CellValueText
             {...props}

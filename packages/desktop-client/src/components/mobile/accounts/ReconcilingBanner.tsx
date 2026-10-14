@@ -11,6 +11,10 @@ import type { AccountEntity } from '@actual-app/core/types/models';
 import type { TransObjectLiteral } from '@actual-app/core/types/util';
 
 import { useFormat } from '#hooks/useFormat';
+// [fork:mc D-008]
+import { useMcAccountBalance } from '#hooks/useMcAccountBalance';
+import { useAccountCurrency } from '#hooks/useMultiCurrency';
+import { useMultiCurrencyFormat } from '#hooks/useMultiCurrencyFormat';
 import { useSheetValue } from '#hooks/useSheetValue';
 import * as bindings from '#spreadsheet/bindings';
 
@@ -28,9 +32,21 @@ export function ReconcilingBanner({
   onCreateTransaction,
 }: ReconcilingBannerProps) {
   const format = useFormat();
-  const cleared = useSheetValue<'account', 'balanceCleared'>(
+  const sheetCleared = useSheetValue<'account', 'balanceCleared'>(
     bindings.accountBalanceCleared(account.id),
   );
+  // [fork:mc D-008] A foreign-currency account compares account amounts
+  // (the target balance is in its minor units too)
+  const accountCurrency = useAccountCurrency(account);
+  const mcCleared = useMcAccountBalance(
+    accountCurrency.isForeign ? account.id : null,
+  )?.cleared;
+  const mcFormat = useMultiCurrencyFormat();
+  const cleared = accountCurrency.isForeign ? mcCleared : sheetCleared;
+  const formatAmount = (value: number) =>
+    accountCurrency.isForeign
+      ? mcFormat.format(value, accountCurrency.currency)
+      : format(value, 'financial');
   const [isUpdating, setIsUpdating] = useState(false);
 
   if (cleared == null) {
@@ -48,10 +64,9 @@ export function ReconcilingBanner({
 
   const targetDiff = targetBalance - cleared;
 
-  const clearedBalance = format(cleared, 'financial');
-  const bankBalance = format(targetBalance, 'financial');
-  const difference =
-    (targetDiff > 0 ? '+' : '') + format(targetDiff, 'financial');
+  const clearedBalance = formatAmount(cleared);
+  const bankBalance = formatAmount(targetBalance);
+  const difference = (targetDiff > 0 ? '+' : '') + formatAmount(targetDiff);
 
   const isBalanced = targetDiff === 0;
 

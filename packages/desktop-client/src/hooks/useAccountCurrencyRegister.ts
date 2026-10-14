@@ -8,7 +8,6 @@ import {
   convertMinorUnits,
   diffFromAccountCurrencyView,
   fromAccountCurrencyView,
-  hundredthsToMinorUnits,
   minorUnitsToHundredths,
   toAccountCurrencyView,
   updatesToAccountCurrencyView,
@@ -40,8 +39,6 @@ export type AccountCurrencyRegister = {
   balancesToView: (
     balances: Record<string, number> | null,
   ) => Record<string, number> | null;
-  /** A register amount as the `mc_amount` to store */
-  toStoredAmount: (amount: number) => number;
 };
 
 export function useAccountCurrencyRegister(
@@ -79,7 +76,6 @@ export function useAccountCurrencyRegister(
         diffFromView: diff => diff,
         updatesToView: updates => [...updates],
         balancesToView: balances => balances,
-        toStoredAmount: amount => amount,
       };
     }
     return {
@@ -104,7 +100,6 @@ export function useAccountCurrencyRegister(
             minorUnitsToHundredths(balance, currency),
           ]),
         ),
-      toStoredAmount: amount => hundredthsToMinorUnits(amount, currency),
     };
   }, [isForeign, currency, budgetCurrency, rateValue]);
 }

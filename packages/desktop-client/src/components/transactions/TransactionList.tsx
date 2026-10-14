@@ -38,6 +38,7 @@ import { useSyncedPref } from '#hooks/useSyncedPref';
 import { pushModal } from '#modals/modalsSlice';
 import { addNotification } from '#notifications/notificationsSlice';
 import { useDispatch } from '#redux';
+import { runRulesInAccountCurrency } from '#transactions/mcRules';
 
 import { applyRulesToTransaction } from './applyRulesToTransaction';
 import type { ClearedFieldsByTransaction } from './table/utils';
@@ -320,19 +321,10 @@ export function TransactionList({
     ) => {
       // [fork:mc D-013] Rules see real fields; in a foreign-currency
       // register they can't change the amount being typed
-      const afterRules = mcRegister.isActive
-        ? {
-            ...(await send('rules-run', {
-              transaction: {
-                ...transaction,
-                amount: 0,
-                mc_amount: mcRegister.toStoredAmount(transaction.amount),
-              },
-            })),
-            amount: transaction.amount,
-            mc_amount: transaction.mc_amount,
-          }
-        : await send('rules-run', { transaction });
+      const afterRules = await runRulesInAccountCurrency(
+        transaction,
+        mcRegister.isActive ? mcRegister.currency : null,
+      );
 
       // Show formula errors if any
       if (afterRules._ruleErrors && afterRules._ruleErrors.length > 0) {

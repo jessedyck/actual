@@ -12,6 +12,7 @@ import { Input } from '@actual-app/components/input';
 import { Text } from '@actual-app/components/text';
 import { theme } from '@actual-app/components/theme';
 import { View } from '@actual-app/components/view';
+import { hundredthsToMinorUnits } from '@actual-app/core/shared/multi-currency';
 import { tsToRelativeTime } from '@actual-app/core/shared/util';
 import type { AccountEntity } from '@actual-app/core/types/models';
 import { format as formatDate } from 'date-fns';
@@ -40,8 +41,12 @@ export function McReconcileMenu({
   const locale = useLocale();
   const balances = useMcAccountBalance(account.id);
   const clearedBalance = balances?.cleared ?? null;
-  // Bank sync reports the balance the bank holds, i.e. in this currency
-  const lastSyncedBalance = account.balance_current;
+  // Bank sync reports the balance the bank holds, i.e. in this currency,
+  // in hundredths like every synced amount
+  const lastSyncedBalance =
+    account.balance_current == null
+      ? null
+      : hundredthsToMinorUnits(account.balance_current, currency);
 
   const [inputValue, setInputValue] = useState<string | null>(null);
   useEffect(() => {

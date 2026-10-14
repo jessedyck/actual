@@ -268,3 +268,79 @@ export function updatesToAccountCurrencyView<T extends ViewDiffItem>(
     ...(amount !== undefined ? { _mcBudgetAmount: amount } : {}),
   })) as T[];
 }
+
+// [fork:mc D-013] Mobile editor. It holds every transaction with its amount
+// in its account's currency, and the account can change while editing.
+// `currencyOf` returns an account's currency when the feature is on and it
+// differs from the budget currency, otherwise null.
+
+type CurrencyOf = (accountId: string | null | undefined) => string | null;
+
+/** Each transaction shown in its own account's currency. */
+export function toAccountCurrencyViews<
+  T extends ViewableTransaction & { account?: string | null },
+>(
+  transactions: readonly T[],
+  currencyOf: CurrencyOf,
+): Array<T & AccountCurrencyViewFields> {
+  return transactions.map(transaction => {
+    const currency = currencyOf(transaction.account);
+    return currency
+      ? toAccountCurrencyView(transaction, { currency })
+      : transaction;
+  });
+}
+
+/**
+ * Converts a diff made in the mobile editor into stored fields. A typed
+ * amount is in the currency of the account the transaction ends up in: it
+ * becomes `mc_amount` for a foreign-currency account (the server derives
+ * the budget amount, D-006) and stays `amount` otherwise. Changes that
+ * don't touch the amount keep the stored amounts as they are.
+ */
+export function diffFromAccountCurrencyViews<
+  D extends { added?: ViewDiffItem[]; updated?: ViewDiffItem[] },
+>(
+  diff: D,
+  accountOf: (id: unknown) => string | null | undefined,
+  currencyOf: CurrencyOf,
+): D {
+  const strip = ({
+    _mcView,
+    _mcBudgetAmount,
+    _mcEstimate,
+    ...rest
+  }: ViewDiffItem) => rest;
+
+  return {
+    ...diff,
+    added: diff.added?.map(item => {
+      const currency = currencyOf(item.account as string | null | undefined);
+      const { amount, mc_amount: _mcAmount, ...rest } = strip(item);
+      return currency
+        ? {
+            ...rest,
+            mc_amount: hundredthsToMinorUnits(amount ?? 0, currency),
+            amount: 0,
+          }
+        : { ...rest, amount: amount ?? 0 };
+    }),
+    updated: diff.updated?.map(item => {
+      const rest = strip(item);
+      if (rest.amount === undefined) {
+        return rest;
+      }
+      const account =
+        (item.account as string | null | undefined) ?? accountOf(item.id);
+      const currency = currencyOf(account);
+      if (!currency) {
+        return rest;
+      }
+      const { amount, ...others } = rest;
+      return {
+        ...others,
+        mc_amount: hundredthsToMinorUnits(amount, currency),
+      };
+    }),
+  };
+}
