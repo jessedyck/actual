@@ -1,0 +1,18 @@
+# [fork:mc D-009] Same as packages/sync-server/docker-compose.yml, using the
+# fork's image. Copy it to a folder on your server and run:
+#   docker compose up -d
+services:
+  actual_server:
+    image: ghcr.io/jessedyck/actual-server:multicurrency
+    ports:
+      - '5006:5006'
+    volumes:
+      # Folder on the host where Actual keeps its data
+      - ./actual-data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'node scripts/health-check.js']
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
