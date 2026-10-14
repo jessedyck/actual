@@ -1,3 +1,9 @@
+<!-- [fork:mc D-010] Fork notice; upstream's README follows unchanged. -->
+
+> [!WARNING]
+> **This branch is a personal, AI-built fork of Actual for its owner's own
+> use. Please don't use it.** See [fork/README.md](fork/README.md).
+
 <p align="center">
   <img src="/demo.png" alt="Actualbudget" />
 </p>

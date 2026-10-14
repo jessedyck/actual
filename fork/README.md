@@ -1,13 +1,25 @@
 # Actual Budget with multi-currency accounts
 
+> [!WARNING]
+> **AI-built and for personal use only. Please don't use it.**
+>
+> This fork was written by an AI coding assistant (Claude, by Anthropic) at
+> its owner's request, for the owner's own budget. Actual's maintainers have
+> not reviewed it, nothing here is supported, and it can damage budget data.
+> It is not a proposal for upstream: please don't open issues or pull
+> requests about it on
+> [actualbudget/actual](https://github.com/actualbudget/actual).
+>
+> If you want multi-currency in Actual, follow the official work instead:
+> [currency feedback issue #5191](https://github.com/actualbudget/actual/issues/5191).
+
 A personal fork of [Actual Budget](https://github.com/actualbudget/actual)
 that adds accounts in other currencies. The budget stays in one currency;
 each account can hold its own, with amounts converted using daily rates from
 [Frankfurter](https://frankfurter.dev) (free, no key) or rates you enter.
 
-This branch is not meant for upstream pull requests. Every difference from
-upstream is logged in [DEVIATIONS.md](DEVIATIONS.md) so the fork can switch
-to upstream's own implementation as it lands.
+Every difference from upstream is logged in [DEVIATIONS.md](DEVIATIONS.md) so
+the fork can switch to upstream's own implementation as it lands.
 
 ## Status
 
@@ -23,6 +35,41 @@ to upstream's own implementation as it lands.
 | Mobile: amounts in the account's currency                                  | Planned |
 | CSV import and reconcile in the account's currency                         | Planned |
 | Reports with a display-currency selector                                   | Planned |
+
+## Log
+
+What was done, newest first. All of it was implemented by an AI assistant;
+[DEVIATIONS.md](DEVIATIONS.md) has the details of every change.
+
+- **2026-10-14** · README: notice that the fork is AI-built and for personal
+  use only, and this log.
+- **2026-10-14** · Register in the account's currency (desktop): amounts,
+  splits and running balance in the account's currency, budget amount in the
+  tooltip.
+  [8a4a59f](https://github.com/jessedyck/actual/commit/8a4a59f)
+- **2026-10-14** · Fixed a test snapshot recorded on a Node build without full
+  ICU, which had blocked the image build.
+  [add2742](https://github.com/jessedyck/actual/commit/add2742)
+- **2026-10-14** · Accounts: pick a currency when creating one, change it
+  later (existing transactions are converted), balances in the account's
+  currency with "worth today" and "in budget".
+  [926f99a](https://github.com/jessedyck/actual/commit/926f99a)
+- **2026-10-14** · Settings: turning the feature on, automatic rate downloads,
+  the rate service, manual rates, converting pending transactions; the budget
+  currency is locked while accounts use other currencies.
+  [160086b](https://github.com/jessedyck/actual/commit/160086b)
+- **2026-10-14** · The Docker image is only published after typecheck and
+  tests pass. [e820747](https://github.com/jessedyck/actual/commit/e820747)
+- **2026-10-14** · Docker image built on every push:
+  `ghcr.io/jessedyck/actual-server:multicurrency`.
+  [3f3d811](https://github.com/jessedyck/actual/commit/3f3d811)
+- **2026-10-14** · Server side: account currency and account-currency amounts
+  in the database, exchange rates (Frankfurter and manual), conversion on
+  every save, transfers between currencies, splits, converting existing
+  accounts. [b536b3f](https://github.com/jessedyck/actual/commit/b536b3f)
+- **2026-10-14** · Fork created from upstream `master` at `832f43da`
+  (26.10.0), with this README and the deviation log.
+  [ac46416](https://github.com/jessedyck/actual/commit/ac46416)
 
 ## Running it
 
