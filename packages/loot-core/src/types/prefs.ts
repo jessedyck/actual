@@ -12,7 +12,9 @@ export type FeatureFlag =
   | 'sankeyReport'
   | 'akahuBankSync'
   | 'mobileCalculator'
-  | 'monteCarloReport';
+  | 'monteCarloReport'
+  // [fork:mc D-001]
+  | 'multiCurrency';
 
 /**
  * Cross-device preferences. These sync across devices when they are changed.
@@ -29,6 +31,10 @@ export type SyncedPrefs = Partial<
     | 'currencySymbolPosition'
     | 'currencySpaceBetweenAmountAndSymbol'
     | 'defaultCurrencyCode'
+    // [fork:mc D-004] 'false' turns off automatic rate downloads; the URL
+    // points at a Frankfurter-compatible API (default: the public one)
+    | 'mcRatesOnline'
+    | 'mcRatesUrl'
     | `show-account-${string}-net-worth-chart`
     | `side-nav.show-balance-history-${string}`
     // @deprecated: superseded by `transaction-table-columns-${string}`; only

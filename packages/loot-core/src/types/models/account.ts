@@ -10,6 +10,9 @@ export type AccountEntity = {
   last_reconciled: string | null;
   tombstone: 0 | 1;
   account_group_id: AccountGroupEntity['id'] | null;
+  // [fork:mc D-002] ISO 4217 code of the account's currency; null or missing
+  // means the budget currency
+  mc_currency?: string | null;
 
   // Sync fields
   account_id: string | null;

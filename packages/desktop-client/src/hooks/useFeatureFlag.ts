@@ -17,6 +17,8 @@ const DEFAULT_FEATURE_FLAG_STATE: Record<FeatureFlag, boolean> = {
   akahuBankSync: false,
   mobileCalculator: false,
   monteCarloReport: false,
+  // [fork:mc D-001]
+  multiCurrency: false,
 };
 
 export function useFeatureFlag(name: FeatureFlag): boolean {

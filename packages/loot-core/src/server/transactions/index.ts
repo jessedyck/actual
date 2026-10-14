@@ -3,6 +3,10 @@
 import * as connection from '#platform/server/connection';
 import * as db from '#server/db';
 import { incrFetch, whereIn } from '#server/db/util';
+import {
+  fillTransferMirrors,
+  prepareMultiCurrencyChanges,
+} from '#server/multi-currency/transactions';
 import { batchMessages } from '#server/sync';
 import type { Diff } from '#shared/util';
 import type { PayeeEntity, TransactionEntity } from '#types/models';
@@ -49,6 +53,17 @@ export async function batchUpdateTransactions({
   detectOrphanPayees?: boolean;
   runTransfers?: boolean;
 }) {
+  // [fork:mc D-006] Fill in budget/account-currency amounts for accounts in
+  // a foreign currency before anything is written. No-op unless enabled.
+  const mcExtraUpdates = await prepareMultiCurrencyChanges({
+    added,
+    updated,
+    deleted,
+  });
+  if (mcExtraUpdates.length > 0) {
+    updated = [...(updated ?? []), ...mcExtraUpdates];
+  }
+
   // Track the ids of each type of transaction change (see below for why)
   let addedIds = [];
   const updatedIds = updated ? updated.map(u => u.id) : [];
@@ -169,6 +184,10 @@ export async function batchUpdateTransactions({
 
       await Promise.all(allDeleted.map(t => transfer.onDelete(t)));
     });
+
+    // [fork:mc D-006] Give new foreign-currency transfer sides an amount in
+    // their own currency
+    await fillTransferMirrors([...addedIds, ...updatedIds]);
   }
 
   if (learnCategories) {

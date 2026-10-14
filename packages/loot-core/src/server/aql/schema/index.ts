@@ -54,6 +54,9 @@ export const schema = {
     tombstone: f('boolean'),
     schedule: f('id', { ref: 'schedules' }),
     raw_synced_data: f('string'),
+    // [fork:mc D-002] Amount in the account's own currency (minor units of
+    // that currency). `amount` stays in the budget currency.
+    mc_amount: f('integer'),
     // subtransactions is a special field added if the table has the
     // `splits: grouped` option
   },
@@ -79,6 +82,8 @@ export const schema = {
     last_sync: f('string'),
     bank_sync_status: f('string'),
     account_group_id: f('id', { ref: 'account_groups' }),
+    // [fork:mc D-002] ISO 4217 code; null means the budget currency
+    mc_currency: f('string'),
   },
   account_groups: {
     id: f('id'),
@@ -222,6 +227,16 @@ export const schema = {
     latitude: f('float', { required: true }),
     longitude: f('float', { required: true }),
     created_at: f('integer', { required: true }),
+    tombstone: f('boolean'),
+  },
+  // [fork:mc D-002] Synced exchange-rate cache: 1 `base` = `rate` `quote`
+  mc_exchange_rates: {
+    id: f('id'),
+    date: f('date', { required: true }),
+    base: f('string', { required: true }),
+    quote: f('string', { required: true }),
+    rate: f('float', { required: true }),
+    source: f('string'),
     tombstone: f('boolean'),
   },
 };

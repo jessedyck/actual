@@ -13,6 +13,11 @@ import {
   TransactionError,
 } from '#server/errors';
 import { app as mainApp } from '#server/main-app';
+// [fork:mc D-005]
+import {
+  getStartingBalanceAmounts,
+  normalizeAccountCurrency,
+} from '#server/multi-currency/accounts';
 import { mutator } from '#server/mutators';
 import { del, get, post } from '#server/post';
 import { getPrefs } from '#server/prefs';
@@ -22,7 +27,6 @@ import { undoable, withUndo } from '#server/undo';
 import { isNonProductionEnvironment } from '#shared/environment';
 import { dayFromDate } from '#shared/months';
 import * as monthUtils from '#shared/months';
-import { amountToInteger } from '#shared/util';
 import type { ImportTransactionsOpts } from '#types/api-handlers';
 import type {
   AccountEntity,
@@ -558,16 +562,22 @@ async function createAccount({
   balance = 0,
   offBudget = false,
   closed = false,
+  mc_currency,
 }: {
   name: string;
   balance?: number | undefined;
   offBudget?: boolean | undefined;
   closed?: boolean | undefined;
+  // [fork:mc D-005] Account currency; the balance is in this currency
+  mc_currency?: string | null | undefined;
 }) {
+  // [fork:mc D-005]
+  const currency = await normalizeAccountCurrency(mc_currency);
   const id: AccountEntity['id'] = await db.insertAccount({
     name,
     offbudget: offBudget ? 1 : 0,
     closed: closed ? 1 : 0,
+    ...(currency ? { mc_currency: currency } : {}),
   });
 
   await db.insertPayee({
@@ -577,13 +587,15 @@ async function createAccount({
 
   if (balance != null && balance !== 0) {
     const payee = await getStartingBalancePayee();
+    const date = monthUtils.currentDay();
 
     await db.insertTransaction({
       account: id,
-      amount: amountToInteger(balance),
+      // [fork:mc D-005] Budget and account-currency starting balance
+      ...(await getStartingBalanceAmounts({ balance, currency, date })),
       category: offBudget ? null : payee.category,
       payee: payee.id,
-      date: monthUtils.currentDay(),
+      date,
       cleared: true,
       starting_balance_flag: true,
     });

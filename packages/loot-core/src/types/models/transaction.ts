@@ -13,6 +13,9 @@ export type TransactionEntity = {
   account: AccountEntity['id'];
   category?: CategoryEntity['id'];
   amount: IntegerAmount;
+  // [fork:mc D-002] Amount in the account's own currency, in that currency's
+  // minor units. Null or missing when the account uses the budget currency.
+  mc_amount?: number | null;
   payee?: PayeeEntity['id'] | null;
   notes?: string;
   date: string;

@@ -25,6 +25,8 @@ import { app as filtersApp } from './filters/app';
 import { app as forecastApp } from './forecast/app';
 import { app as formulasApp } from './formulas/app';
 import { app } from './main-app';
+// [fork:mc D-005]
+import { app as multiCurrencyApp } from './multi-currency/app';
 import { mutator, runHandler } from './mutators';
 import { app as notesApp } from './notes/app';
 import { app as payeesApp } from './payees/app';
@@ -152,6 +154,8 @@ app.combine(
   budgetFilesApp,
   encryptionApp,
   tagsApp,
+  // [fork:mc D-005]
+  multiCurrencyApp,
 );
 
 export function getDefaultDocumentDir() {

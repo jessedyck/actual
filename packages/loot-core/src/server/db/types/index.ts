@@ -37,6 +37,20 @@ export type DbAccount = {
     | 'not-configured'
     | null;
   account_group_id?: DbAccountGroup['id'] | null;
+  // [fork:mc D-002] ISO 4217 code; null means the budget currency
+  mc_currency?: string | null;
+};
+
+// [fork:mc D-002] Row of the fork-only exchange-rate cache.
+// 1 unit of `base` = `rate` units of `quote`; `date` is YYYYMMDD.
+export type DbMcExchangeRate = {
+  id: string;
+  date: number;
+  base: string;
+  quote: string;
+  rate: number;
+  source: string | null;
+  tombstone: 1 | 0;
 };
 
 export type DbAccountGroup = {
@@ -207,6 +221,8 @@ export type DbTransaction = {
   tombstone: 1 | 0;
   cleared: 1 | 0;
   reconciled: 1 | 0;
+  // [fork:mc D-002] Amount in the account's own currency (its minor units)
+  mc_amount?: number | null;
   // Unused in the codebase
   pending?: 1 | 0 | null;
   location?: string | null;
@@ -316,6 +332,8 @@ export type DbViewTransactionInternal = {
   cleared: DbTransaction['cleared'];
   tombstone: DbTransaction['tombstone'];
   reconciled: DbTransaction['reconciled'];
+  // [fork:mc D-002]
+  mc_amount?: DbTransaction['mc_amount'];
 };
 
 export type DbViewTransactionInternalAlive = DbViewTransactionInternal;
