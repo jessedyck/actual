@@ -8,6 +8,13 @@ import { aqlQuery } from '#server/aql';
 import * as db from '#server/db';
 import { TRANSACTION_SORT_INCREMENT } from '#server/db/sort';
 import { TransactionError } from '#server/errors';
+// [fork:mc D-008]
+import {
+  getImportAmountMatch,
+  getImportCurrency,
+  getImportPreviewAmount,
+  readImportedAmounts,
+} from '#server/multi-currency/imports';
 import { runMutator } from '#server/mutators';
 import { post } from '#server/post';
 import { getServer } from '#server/server-config';
@@ -653,6 +660,8 @@ export async function reconcileTransactions(
   const added = [];
   const updatedPreview = [];
   const existingPayeeMap = new Map<string, string>();
+  // [fork:mc D-008]
+  const mcCurrency = await getImportCurrency(acctId);
 
   const {
     payeesToCreate,
@@ -721,7 +730,10 @@ export async function reconcileTransactions(
           existingPayeeMap.set(existing.payee, payee?.name);
         }
         existing.payee_name = existingPayeeMap.get(existing.payee);
-        existing.amount = integerToAmount(existing.amount);
+        // [fork:mc D-008] In the account's currency, like the file's amounts
+        existing.amount = mcCurrency
+          ? getImportPreviewAmount(existing, trans, mcCurrency)
+          : integerToAmount(existing.amount);
         updatedPreview.push({ transaction: trans, existing });
       } else {
         updatedPreview.push({ transaction: trans, ignored: true });
@@ -860,6 +872,12 @@ export async function matchTransactions(
         payeeNameNormalization,
       });
 
+  // [fork:mc D-008] Amounts from a file or a bank are in the account's currency
+  const mcCurrency = await getImportCurrency(acctId);
+  if (mcCurrency) {
+    await readImportedAmounts(normalized, mcCurrency);
+  }
+
   // The first pass runs the rules, and preps data for fuzzy matching
   const accounts: db.DbAccount[] = await db.getAccounts();
   const accountsMap = new Map(accounts.map(account => [account.id, account]));
@@ -905,6 +923,8 @@ export async function matchTransactions(
       // fields.
       const sevenDaysBefore = db.toDateRepr(monthUtils.subDays(trans.date, 7));
       const sevenDaysAfter = db.toDateRepr(monthUtils.addDays(trans.date, 7));
+      // [fork:mc D-008] Foreign-currency accounts match account amounts
+      const amountMatch = getImportAmountMatch(trans, mcCurrency);
       // strictIdChecking has the added behaviour of only matching on transactions with no import ID
       // if the transaction being imported has an import ID.
       if (strictIdChecking) {
@@ -923,20 +943,21 @@ export async function matchTransactions(
             | 'reconciled'
             | 'cleared'
             | 'amount'
+            | 'mc_amount'
           >
         >(
-          `SELECT id, is_parent, parent_id, date, imported_id, payee, imported_payee, category, notes, reconciled, cleared, amount
+          `SELECT id, is_parent, parent_id, date, imported_id, payee, imported_payee, category, notes, reconciled, cleared, amount, mc_amount
           FROM v_transactions
           WHERE
             -- If both ids are set, and we didn't match earlier then skip dedup
             (imported_id IS NULL OR ? IS NULL)
-            AND date >= ? AND date <= ? AND amount = ?
+            AND date >= ? AND date <= ? AND ${amountMatch.sql}
             AND account = ?`,
           [
             trans.imported_id || null,
             sevenDaysBefore,
             sevenDaysAfter,
-            trans.amount || 0,
+            ...amountMatch.params,
             acctId,
           ],
         );
@@ -956,12 +977,13 @@ export async function matchTransactions(
             | 'reconciled'
             | 'cleared'
             | 'amount'
+            | 'mc_amount'
           >
         >(
-          `SELECT id, is_parent, parent_id, date, imported_id, payee, imported_payee, category, notes, reconciled, cleared, amount
+          `SELECT id, is_parent, parent_id, date, imported_id, payee, imported_payee, category, notes, reconciled, cleared, amount, mc_amount
           FROM v_transactions
-          WHERE date >= ? AND date <= ? AND amount = ? AND account = ?`,
-          [sevenDaysBefore, sevenDaysAfter, trans.amount || 0, acctId],
+          WHERE date >= ? AND date <= ? AND ${amountMatch.sql} AND account = ?`,
+          [sevenDaysBefore, sevenDaysAfter, ...amountMatch.params, acctId],
         );
       }
 

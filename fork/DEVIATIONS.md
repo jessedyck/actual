@@ -46,21 +46,21 @@ migration, described under D-002.
 
 ## Deviation register
 
-| ID    | Area                                                          | Upstream files touched                                                                                                                                                                                                                                                                                                             | Status                                       |
-| ----- | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
-| D-001 | `multiCurrency` experimental flag                             | `loot-core/src/types/prefs.ts`, `desktop-client/src/hooks/useFeatureFlag.ts`                                                                                                                                                                                                                                                       | Done                                         |
-| D-002 | Schema: account currency, account-currency amount, rate table | `loot-core/src/server/aql/schema/index.ts`, `loot-core/src/server/db/types/index.ts`, `loot-core/src/types/models/{account,transaction,index}.ts`, 4 snapshot files                                                                                                                                                                | Done                                         |
-| D-003 | Shared conversion helpers                                     | none (fork-owned)                                                                                                                                                                                                                                                                                                                  | Done                                         |
-| D-004 | Exchange rates: synced cache, Frankfurter, manual rates       | `loot-core/src/types/prefs.ts` (pref keys)                                                                                                                                                                                                                                                                                         | Done                                         |
-| D-005 | Server handlers, account currency on creation, backfill       | `loot-core/src/server/main.ts`, `loot-core/src/types/handlers.ts`, `loot-core/src/server/accounts/app.ts`                                                                                                                                                                                                                          | Done                                         |
-| D-006 | Keep `amount` and `mc_amount` consistent on every write       | `loot-core/src/server/transactions/index.ts`                                                                                                                                                                                                                                                                                       | Done                                         |
-| D-007 | Settings: flag toggle, rate settings, budget-currency lock    | `desktop-client/src/components/settings/{Experimental,index,Currency}.tsx`                                                                                                                                                                                                                                                         | Done                                         |
-| D-008 | Reconcile and CSV import in the account currency              | `desktop-client/src/components/accounts/{Header,Account}.tsx`                                                                                                                                                                                                                                                                      | Reconcile done (desktop); CSV import planned |
-| D-009 | Docker image built from this branch                           | none (fork-owned workflow)                                                                                                                                                                                                                                                                                                         | Done                                         |
-| D-010 | Fork docs and notices                                         | `README.md` (notice at the top)                                                                                                                                                                                                                                                                                                    | Done                                         |
-| D-011 | Client hooks: multi-currency state, per-currency formatting   | none (fork-owned)                                                                                                                                                                                                                                                                                                                  | Done                                         |
-| D-012 | Accounts: currency on create and change, balances             | `loot-core/src/server/accounts/app.ts` (`accounts-get`), `desktop-client/src/accounts/mutations.ts`, `desktop-client/src/modals/modalsSlice.ts`, `desktop-client/src/components/{Modals,modals/CreateLocalAccountModal,modals/AccountMenuModal,accounts/Header,accounts/Account,sidebar/Account,mobile/accounts/AccountsPage}.tsx` | Done (mobile account page header pending)    |
-| D-013 | Register: amounts in the account's currency                   | `desktop-client/src/components/transactions/{TransactionList,TransactionsTable}.tsx`, `desktop-client/src/components/accounts/Account.tsx`                                                                                                                                                                                         | Done (desktop; mobile pending)               |
+| ID    | Area                                                          | Upstream files touched                                                                                                                                                                                                                                                                                                             | Status                                    |
+| ----- | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| D-001 | `multiCurrency` experimental flag                             | `loot-core/src/types/prefs.ts`, `desktop-client/src/hooks/useFeatureFlag.ts`                                                                                                                                                                                                                                                       | Done                                      |
+| D-002 | Schema: account currency, account-currency amount, rate table | `loot-core/src/server/aql/schema/index.ts`, `loot-core/src/server/db/types/index.ts`, `loot-core/src/types/models/{account,transaction,index}.ts`, 4 snapshot files                                                                                                                                                                | Done                                      |
+| D-003 | Shared conversion helpers                                     | none (fork-owned)                                                                                                                                                                                                                                                                                                                  | Done                                      |
+| D-004 | Exchange rates: synced cache, Frankfurter, manual rates       | `loot-core/src/types/prefs.ts` (pref keys)                                                                                                                                                                                                                                                                                         | Done                                      |
+| D-005 | Server handlers, account currency on creation, backfill       | `loot-core/src/server/main.ts`, `loot-core/src/types/handlers.ts`, `loot-core/src/server/accounts/app.ts`                                                                                                                                                                                                                          | Done                                      |
+| D-006 | Keep `amount` and `mc_amount` consistent on every write       | `loot-core/src/server/transactions/index.ts`                                                                                                                                                                                                                                                                                       | Done                                      |
+| D-007 | Settings: flag toggle, rate settings, budget-currency lock    | `desktop-client/src/components/settings/{Experimental,index,Currency}.tsx`                                                                                                                                                                                                                                                         | Done                                      |
+| D-008 | Reconcile and imports in the account currency                 | `desktop-client/src/components/accounts/{Header,Account}.tsx`, `desktop-client/src/components/modals/ImportTransactionsModal/ImportTransactionsModal.tsx`, `loot-core/src/server/accounts/sync.ts`                                                                                                                                 | Done (mobile reconcile pending)           |
+| D-009 | Docker image built from this branch                           | none (fork-owned workflow)                                                                                                                                                                                                                                                                                                         | Done                                      |
+| D-010 | Fork docs and notices                                         | `README.md` (notice at the top)                                                                                                                                                                                                                                                                                                    | Done                                      |
+| D-011 | Client hooks: multi-currency state, per-currency formatting   | none (fork-owned)                                                                                                                                                                                                                                                                                                                  | Done                                      |
+| D-012 | Accounts: currency on create and change, balances             | `loot-core/src/server/accounts/app.ts` (`accounts-get`), `desktop-client/src/accounts/mutations.ts`, `desktop-client/src/modals/modalsSlice.ts`, `desktop-client/src/components/{Modals,modals/CreateLocalAccountModal,modals/AccountMenuModal,accounts/Header,accounts/Account,sidebar/Account,mobile/accounts/AccountsPage}.tsx` | Done (mobile account page header pending) |
+| D-013 | Register: amounts in the account's currency                   | `desktop-client/src/components/transactions/{TransactionList,TransactionsTable}.tsx`, `desktop-client/src/components/accounts/Account.tsx`                                                                                                                                                                                         | Done (desktop; mobile pending)            |
 
 ### D-001: `multiCurrency` flag
 
@@ -152,8 +152,12 @@ amount at each transaction's date. Notes are left untouched.
 - No rate: `amount` is 0 until `mc-recompute-pending` finds one.
 - Split children are rounded to add up exactly to the parent.
 
-Writes that bypass `batchUpdateTransactions` (bank-sync fast path, account
-starting balance) are covered separately or not at all; see D-008.
+Writes that bypass `batchUpdateTransactions` get no account amount until
+`mc-recompute-pending` derives one from `amount`: the API's
+`addTransactions` without `runTransfers`, and bank sync's starting balance
+for a newly linked account (which is then read as a budget amount; not
+handled). A new account's starting balance is handled by D-005, imports by
+D-008.
 
 _Reconcile:_ remove both call sites once upstream converts amounts itself.
 
@@ -177,7 +181,7 @@ _Reconcile:_ remove both call sites once upstream converts amounts itself.
 _Reconcile:_ remove the nesting and both guards with the flag. If upstream
 adds rate settings, move `mcRatesOnline` / `mcRatesUrl` into them.
 
-### D-008: Reconcile and CSV import in the account's currency
+### D-008: Reconcile and imports in the account's currency
 
 **Reconcile** (desktop). For a foreign-currency account the statement
 balance is typed in the account's currency and compared with the cleared sum
@@ -192,12 +196,39 @@ of `mc_amount`:
   `isAccountCurrencyView`, D-013). The adjustment stores `mc_amount`; the
   server derives its budget amount (D-006).
 
-**CSV import**: not started.
+**Imports** (CSV, OFX, QIF and CAMT files, bank sync, and the API's
+`importTransactions`). Amounts sent for a foreign-currency account are read
+in the account's currency, in hundredths like every amount the API takes:
+
+- `server/accounts/sync.ts` (`matchTransactions`): right after the
+  transactions are normalized, the fork's `readImportedAmounts`
+  (`server/multi-currency/imports.ts`) moves each amount to `mc_amount` and
+  converts `amount` at the transaction's date, so rules and duplicate
+  matching see the budget value the transaction will have. A transaction
+  that already carries `mc_amount` keeps both amounts. Split children only
+  get `mc_amount`; D-006 derives and rounds their budget amounts.
+- Duplicate matching compares account amounts, falling back to `amount` for
+  rows whose conversion is pending: both fuzzy-match queries also select
+  `mc_amount` and take their amount condition from `getImportAmountMatch`
+  (upstream's `amount = ?` for other accounts).
+- `reconcileTransactions`: the import preview shows a matched transaction's
+  amount in the account's currency (`getImportPreviewAmount`), like the
+  file's amounts next to it.
+- `ImportTransactionsModal.tsx`: a note under _Amount options_ says which
+  currency the file's amounts are read in (`McImportCurrencyNote`).
+
+The API's `addTransactions` and transactions posted by schedules still take
+budget amounts, as everywhere else in the API (D-006 derives the account
+amount).
 
 Not yet: reconciling on mobile still compares budget amounts.
 
 _Reconcile:_ remove the fork components, `mcReconciliation.ts` and both
-branches once upstream reconciles in the account's currency.
+branches in `Header.tsx` and `Account.tsx` once upstream reconciles in the
+account's currency; remove the `readImportedAmounts` call, the amount
+conditions and the preview amount from `sync.ts` once upstream imports into
+account currencies. Upstream will most likely read imported amounts in the
+account's currency too, so imports into converted accounts keep working.
 
 ### D-012: Accounts
 

@@ -34,6 +34,8 @@ import {
 import { Modal, ModalCloseButton, ModalHeader } from '#components/common/Modal';
 import { SectionLabel } from '#components/forms';
 import { LabeledCheckbox } from '#components/forms/LabeledCheckbox';
+// [fork:mc D-008]
+import { McImportCurrencyNote } from '#components/multi-currency/McImportCurrencyNote';
 import { TableHeader, TableWithNavigator } from '#components/table';
 import { useCategories } from '#hooks/useCategories';
 import { useDateFormat } from '#hooks/useDateFormat';
@@ -1311,6 +1313,8 @@ export function ImportTransactionsModal({
 
                 <View style={{ marginRight: 10, gap: 5 }}>
                   <SectionLabel title={t('AMOUNT OPTIONS')} />
+                  {/* [fork:mc D-008] */}
+                  <McImportCurrencyNote accountId={accountId} />
                   <CheckboxToggle
                     id="form_flip"
                     checked={flipAmount}
