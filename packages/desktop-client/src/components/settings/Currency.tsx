@@ -7,6 +7,8 @@ import { currencies, getCurrency } from '@actual-app/core/shared/currencies';
 import { css } from '@emotion/css';
 
 import { Checkbox } from '#components/forms';
+// [fork:mc D-007]
+import { useHasForeignCurrencyAccounts } from '#hooks/useMultiCurrency';
 import { useSyncedPref } from '#hooks/useSyncedPref';
 
 import { SettingsGroup } from './SettingsGroup';
@@ -79,6 +81,9 @@ export function CurrencySettings() {
     'defaultCurrencyCode',
   );
   const selectedCurrencyCode = defaultCurrencyCode || '';
+  // [fork:mc D-007] Existing budget amounts would be read in the wrong
+  // currency if the budget currency changed while accounts use their own
+  const isBudgetCurrencyLocked = useHasForeignCurrencyAccounts();
 
   const [symbolPosition, setSymbolPositionPref] = useSyncedPref(
     'currencySymbolPosition',
@@ -144,10 +149,18 @@ export function CurrencySettings() {
     >
       <SettingsRow
         title={t('Default currency')}
+        description={
+          isBudgetCurrencyLocked
+            ? t(
+                'Locked because some accounts use their own currency. Change those accounts back to the budget currency to unlock it.',
+              )
+            : undefined
+        }
         control={
           <Select
             value={selectedCurrencyCode}
             onChange={handleCurrencyChange}
+            disabled={isBudgetCurrencyLocked}
             options={currencyOptions}
             className={selectButtonClassName}
             style={{ maxWidth: '100%' }}

@@ -11,15 +11,16 @@ to upstream's own implementation as it lands.
 
 ## Status
 
-| Piece                                                                        | State         |
-| ---------------------------------------------------------------------------- | ------------- |
-| Account currency, account-currency amounts, rate cache (database)            | Done          |
-| Automatic and manual exchange rates                                          | Done          |
-| Conversion on every save, transfers between currencies, splits               | Done          |
-| Starting balance and backfill when an account gets a currency                | Done (server) |
-| Screens: currency picker, register in the account's currency, rates settings | In progress   |
-| CSV import and reconcile in the account's currency                           | Planned       |
-| Reports with a display-currency selector                                     | Planned       |
+| Piece                                                                    | State         |
+| ------------------------------------------------------------------------ | ------------- |
+| Account currency, account-currency amounts, rate cache (database)        | Done          |
+| Automatic and manual exchange rates                                      | Done          |
+| Conversion on every save, transfers between currencies, splits           | Done          |
+| Starting balance and backfill when an account gets a currency            | Done (server) |
+| Settings: turning it on, exchange rates, budget-currency lock            | Done          |
+| Screens: currency picker on accounts, register in the account's currency | In progress   |
+| CSV import and reconcile in the account's currency                       | Planned       |
+| Reports with a display-currency selector                                 | Planned       |
 
 ## Running it
 

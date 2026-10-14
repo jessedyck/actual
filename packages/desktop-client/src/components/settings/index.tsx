@@ -19,6 +19,8 @@ import { closeBudget } from '#budgetfiles/budgetfilesSlice';
 import { Link } from '#components/common/Link';
 import { Checkbox, FormField, FormLabel } from '#components/forms';
 import { MOBILE_NAV_HEIGHT } from '#components/mobile/MobileNavTabs';
+// [fork:mc D-007]
+import { MultiCurrencySettings } from '#components/multi-currency/MultiCurrencySettings';
 import { MobilePageHeader, Page } from '#components/Page';
 import { useServerURL, useServerVersion } from '#components/ServerContext';
 import { useFeatureFlag } from '#hooks/useFeatureFlag';
@@ -270,6 +272,8 @@ export function GeneralSettings() {
   const { t } = useTranslation();
   const { isNarrowWidth } = useResponsive();
   const isCurrencyExperimentalEnabled = useFeatureFlag('currency');
+  // [fork:mc D-007]
+  const isMultiCurrencyEnabled = useFeatureFlag('multiCurrency');
   const serverURL = useServerURL();
 
   return (
@@ -279,6 +283,8 @@ export function GeneralSettings() {
       {!isNarrowWidth && <SidebarSettings />}
       <FormatSettings />
       {isCurrencyExperimentalEnabled && <CurrencySettings />}
+      {/* [fork:mc D-007] */}
+      {isMultiCurrencyEnabled && <MultiCurrencySettings />}
       <LanguageSettings />
       <SettingsGroup title={t('Budget')}>
         <BudgetTypeSettings />
@@ -327,6 +333,8 @@ export function Settings() {
   const { isNarrowWidth } = useResponsive();
   const dispatch = useDispatch();
   const isCurrencyExperimentalEnabled = useFeatureFlag('currency');
+  // [fork:mc D-007]
+  const isMultiCurrencyEnabled = useFeatureFlag('multiCurrency');
 
   useEffect(() => {
     const unlisten = listen('prefs-updated', () => {
@@ -338,10 +346,12 @@ export function Settings() {
   }, [dispatch]);
 
   useEffect(() => {
-    if (!isCurrencyExperimentalEnabled) {
+    // [fork:mc D-007] Never clear the budget currency while multi-currency
+    // accounts are on: their conversions depend on it
+    if (!isCurrencyExperimentalEnabled && !isMultiCurrencyEnabled) {
       void dispatch(saveSyncedPrefs({ prefs: { defaultCurrencyCode: '' } }));
     }
-  }, [dispatch, isCurrencyExperimentalEnabled]);
+  }, [dispatch, isCurrencyExperimentalEnabled, isMultiCurrencyEnabled]);
 
   if (isNarrowWidth) {
     return <Outlet />;

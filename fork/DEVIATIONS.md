@@ -22,6 +22,9 @@ retire fork code as it does.
   - `packages/loot-core/src/server/multi-currency/`
   - `packages/loot-core/src/shared/multi-currency.ts` (and its test)
   - `packages/loot-core/src/types/models/mc-exchange-rate.ts`
+  - `packages/desktop-client/src/components/multi-currency/`
+  - `packages/desktop-client/src/hooks/useMultiCurrency.ts`
+  - `packages/desktop-client/src/hooks/useMultiCurrencyFormat.ts`
 - Everything the fork stores is prefixed `mc_` (columns, the rate table,
   synced preference keys). An upstream migration can therefore never collide
   with fork data, even if upstream picks names like `currency`.
@@ -38,18 +41,21 @@ migration, described under D-002.
 
 ## Deviation register
 
-| ID    | Area                                                          | Upstream files touched                                                                                                                                              | Status                          |
-| ----- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
-| D-001 | `multiCurrency` experimental flag                             | `loot-core/src/types/prefs.ts`, `desktop-client/src/hooks/useFeatureFlag.ts`                                                                                        | Done (toggle UI pending, D-007) |
-| D-002 | Schema: account currency, account-currency amount, rate table | `loot-core/src/server/aql/schema/index.ts`, `loot-core/src/server/db/types/index.ts`, `loot-core/src/types/models/{account,transaction,index}.ts`, 4 snapshot files | Done                            |
-| D-003 | Shared conversion helpers                                     | none (fork-owned)                                                                                                                                                   | Done                            |
-| D-004 | Exchange rates: synced cache, Frankfurter, manual rates       | `loot-core/src/types/prefs.ts` (pref keys)                                                                                                                          | Done                            |
-| D-005 | Server handlers, account currency on creation, backfill       | `loot-core/src/server/main.ts`, `loot-core/src/types/handlers.ts`, `loot-core/src/server/accounts/app.ts`                                                           | Done                            |
-| D-006 | Keep `amount` and `mc_amount` consistent on every write       | `loot-core/src/server/transactions/index.ts`                                                                                                                        | Done                            |
-| D-007 | Client UI: formatting, register, accounts, settings           | (in progress)                                                                                                                                                       | Planned                         |
-| D-008 | CSV import and reconcile in the account currency              | (in progress)                                                                                                                                                       | Planned                         |
-| D-009 | Docker image built from this branch                           | none (fork-owned workflow)                                                                                                                                          | Done                            |
-| D-010 | Fork docs                                                     | none (`fork/`)                                                                                                                                                      | Done                            |
+| ID    | Area                                                          | Upstream files touched                                                                                                                                              | Status  |
+| ----- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| D-001 | `multiCurrency` experimental flag                             | `loot-core/src/types/prefs.ts`, `desktop-client/src/hooks/useFeatureFlag.ts`                                                                                        | Done    |
+| D-002 | Schema: account currency, account-currency amount, rate table | `loot-core/src/server/aql/schema/index.ts`, `loot-core/src/server/db/types/index.ts`, `loot-core/src/types/models/{account,transaction,index}.ts`, 4 snapshot files | Done    |
+| D-003 | Shared conversion helpers                                     | none (fork-owned)                                                                                                                                                   | Done    |
+| D-004 | Exchange rates: synced cache, Frankfurter, manual rates       | `loot-core/src/types/prefs.ts` (pref keys)                                                                                                                          | Done    |
+| D-005 | Server handlers, account currency on creation, backfill       | `loot-core/src/server/main.ts`, `loot-core/src/types/handlers.ts`, `loot-core/src/server/accounts/app.ts`                                                           | Done    |
+| D-006 | Keep `amount` and `mc_amount` consistent on every write       | `loot-core/src/server/transactions/index.ts`                                                                                                                        | Done    |
+| D-007 | Settings: flag toggle, rate settings, budget-currency lock    | `desktop-client/src/components/settings/{Experimental,index,Currency}.tsx`                                                                                          | Done    |
+| D-008 | CSV import and reconcile in the account currency              | (not started)                                                                                                                                                       | Planned |
+| D-009 | Docker image built from this branch                           | none (fork-owned workflow)                                                                                                                                          | Done    |
+| D-010 | Fork docs                                                     | none (`fork/`)                                                                                                                                                      | Done    |
+| D-011 | Client hooks: multi-currency state, per-currency formatting   | none (fork-owned)                                                                                                                                                   | Done    |
+| D-012 | Accounts: currency on create and change, balances             | (not started)                                                                                                                                                       | Planned |
+| D-013 | Register: amounts in the account's currency                   | (not started)                                                                                                                                                       | Planned |
 
 ### D-001: `multiCurrency` flag
 
@@ -146,6 +152,26 @@ starting balance) are covered separately or not at all; see D-008.
 
 _Reconcile:_ remove both call sites once upstream converts amounts itself.
 
+### D-007: Settings
+
+- _Experimental features_: **Multi-currency accounts** is a sub-feature of
+  upstream's **Currency support**, which can't be switched off while it is on
+  (`settings/Experimental.tsx`).
+- _Settings_ shows the fork's **Multi-currency accounts** group when the flag
+  is on, and no longer clears `defaultCurrencyCode` when Currency support is
+  off while multi-currency is on (`settings/index.tsx`; upstream clears it
+  whenever the currency flag is off).
+- The default-currency picker is disabled while any account has
+  `mc_currency` (`settings/Currency.tsx`): existing budget amounts would
+  otherwise be read in the wrong currency.
+- Fork-owned rows in `components/multi-currency/`: automatic downloads
+  (`mcRatesOnline`), service URL (`mcRatesUrl`), convert pending
+  (`mc-recompute-pending`), and the stored rates with manual entry and
+  deletion. Saving a manual rate also converts pending transactions.
+
+_Reconcile:_ remove the nesting and both guards with the flag. If upstream
+adds rate settings, move `mcRatesOnline` / `mcRatesUrl` into them.
+
 ### D-009: Docker image
 
 `.github/workflows/fork-docker.yml` builds the same image as upstream's
@@ -157,6 +183,21 @@ upstream or on manual dispatch, so they don't interfere.
 
 A `verify` job (typecheck, core tests, web-client tests) gates the build, so
 a failing commit never replaces the published image.
+
+### D-011: Client hooks
+
+- `hooks/useMultiCurrency.ts`: whether the feature is on (flag plus budget
+  currency, same rule as the server's `getMultiCurrencyContext`), an
+  account's currency state, and whether any account has its own currency.
+- `hooks/useMultiCurrencyFormat.ts`: formats and parses amounts in any
+  currency with the user's number format, symbol position and spacing, using
+  that currency's symbol and decimal places. Upstream's `useFormat` only
+  knows the budget currency.
+
+Both live in `src/hooks/` because desktop-client's `#components/*` import
+alias only resolves `.tsx` files; this avoids editing `package.json`.
+
+_Reconcile:_ switch to upstream's formatter once it accepts a currency.
 
 ## Syncing with upstream
 

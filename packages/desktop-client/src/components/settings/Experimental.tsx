@@ -184,6 +184,9 @@ export function ExperimentalFeatures() {
   const [, setGoalTemplatesUIPref] = useSyncedPref(
     'flags.goalTemplatesUIEnabled',
   );
+  // [fork:mc D-007]
+  const currencyEnabled = useFeatureFlag('currency');
+  const multiCurrencyEnabled = useFeatureFlag('multiCurrency');
   const isUsingServer = useSyncServerStatus() !== 'no-server';
 
   const showServerPrefs =
@@ -234,6 +237,27 @@ export function ExperimentalFeatures() {
       <FeatureToggle
         flag="currency"
         feedbackLink="https://github.com/actualbudget/actual/issues/5191"
+        // [fork:mc D-007] Turning Currency support off clears the budget
+        // currency, which multi-currency accounts depend on
+        disableToggle={currencyEnabled && multiCurrencyEnabled}
+        error={<Trans>Turn off multi-currency accounts first.</Trans>}
+        subFeatures={
+          (currencyEnabled || multiCurrencyEnabled) && (
+            <FeatureToggle
+              flag="multiCurrency"
+              isSubFeature
+              note={
+                <Trans>
+                  From this personal fork, not official Actual. Accounts can use
+                  their own currency; amounts are converted to the budget
+                  currency.
+                </Trans>
+              }
+            >
+              <Trans>Multi-currency accounts</Trans>
+            </FeatureToggle>
+          )
+        }
       >
         <Trans>Currency support</Trans>
       </FeatureToggle>
