@@ -23,29 +23,34 @@ the fork can switch to upstream's own implementation as it lands.
 
 ## Status
 
-| Piece                                                                      | State   |
-| -------------------------------------------------------------------------- | ------- |
-| Account currency, account-currency amounts, rate cache (database)          | Done    |
-| Automatic and manual exchange rates                                        | Done    |
-| Conversion on every save, transfers between currencies, splits             | Done    |
-| Starting balance and backfill when an account gets a currency              | Done    |
-| Settings: turning it on, exchange rates, budget-currency lock              | Done    |
-| Accounts: currency when creating or changing, balances in that currency    | Done    |
-| Register (desktop): entering and showing amounts in the account's currency | Done    |
-| Reconcile in the account's currency (desktop)                              | Done    |
-| Imports (CSV, OFX, QIF, CAMT) in the account's currency                    | Done    |
-| Mobile: amounts and reconcile in the account's currency                    | Done    |
-| Exchange rate adjustment to today's value (desktop)                        | Done    |
-| Reports with a display-currency selector                                   | Planned |
+| Piece                                                                          | State   |
+| ------------------------------------------------------------------------------ | ------- |
+| Account currency, account-currency amounts, rate cache (database)              | Done    |
+| Automatic and manual exchange rates                                            | Done    |
+| Conversion on every save, transfers between currencies, splits                 | Done    |
+| Starting balance and backfill when an account gets a currency                  | Done    |
+| Settings: turning it on, exchange rates, budget-currency lock                  | Done    |
+| Accounts: currency when creating or changing, balances in that currency        | Done    |
+| Register (desktop): entering and showing amounts in the account's currency     | Done    |
+| Reconcile in the account's currency (desktop)                                  | Done    |
+| Imports (CSV, OFX, QIF, CAMT) in the account's currency                        | Done    |
+| Mobile: amounts and reconcile in the account's currency                        | Done    |
+| Exchange rate adjustment to today's value (desktop)                            | Done    |
+| Net worth report: accounts valued at each period's rate, shown in any currency | Done    |
+| Cash flow and custom reports in another currency                               | Planned |
 
 ## Log
 
 What was done, newest first. All of it was implemented by an AI assistant;
 [DEVIATIONS.md](DEVIATIONS.md) has the details of every change.
 
+- **2026-10-14** · Net worth report: accounts in other currencies are
+  valued at the rate of each period, and the report (page and dashboard
+  card) can be shown in any currency.
 - **2026-10-14** · Exchange rate adjustment: one click records the
   difference between what an account in another currency is worth today and
   its value in the budget.
+  [57a5e2b](https://github.com/jessedyck/actual/commit/57a5e2b)
 - **2026-10-14** · Mobile: an account with its own currency shows its
   balances, transactions and running balances in that currency; amounts are
   entered in the currency of the chosen account; reconciling works in that

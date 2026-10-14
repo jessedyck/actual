@@ -35,6 +35,9 @@ export type SyncedPrefs = Partial<
     // points at a Frankfurter-compatible API (default: the public one)
     | 'mcRatesOnline'
     | 'mcRatesUrl'
+    // [fork:mc D-015] Currency the supported reports are shown in (default:
+    // the budget currency)
+    | 'mcReportCurrency'
     | `show-account-${string}-net-worth-chart`
     | `side-nav.show-balance-history-${string}`
     // @deprecated: superseded by `transaction-table-columns-${string}`; only

@@ -393,3 +393,64 @@ export async function listRates({
     params,
   );
 }
+
+/**
+ * [fork:mc D-015] Rates for a series of dates, such as the ends of report
+ * periods: 1 `base` = rate `quote`. Missing rates are fetched once as a
+ * range; then each date takes the newest stored rate on or before it,
+ * falling back to the oldest one after it. Future dates use today's rate.
+ * Null only when the pair has no stored rate at all.
+ */
+export async function getRatesAt(
+  base: string,
+  quote: string,
+  dates: string[],
+): Promise<Record<string, number | null>> {
+  if (base === quote) {
+    return Object.fromEntries(dates.map(date => [date, 1]));
+  }
+  await ensureRates(base, quote, dates);
+
+  const rows = await db.all<
+    Pick<db.DbMcExchangeRate, 'date' | 'base' | 'rate' | 'source'>
+  >(
+    `SELECT date, base, rate, source FROM mc_exchange_rates
+      WHERE tombstone = 0 AND rate > 0
+        AND ((base = ? AND quote = ?) OR (base = ? AND quote = ?))
+      ORDER BY date,
+        CASE WHEN source = 'manual' THEN 1 ELSE 0 END,
+        CASE WHEN base = ? THEN 1 ELSE 0 END`,
+    [base, quote, quote, base, base],
+  );
+  // One rate per day; the ordering puts the preferred row (manual, then
+  // stored in this direction) last
+  const byDay = new Map<number, number>();
+  for (const row of rows) {
+    byDay.set(row.date, row.base === base ? row.rate : 1 / row.rate);
+  }
+  const days = [...byDay.keys()];
+
+  return Object.fromEntries(
+    dates.map(date => {
+      if (days.length === 0) {
+        return [date, null];
+      }
+      const target = db.toDateRepr(clampToToday(date));
+      // Newest day on or before the target (binary search)
+      let low = 0;
+      let high = days.length - 1;
+      let found = -1;
+      while (low <= high) {
+        const middle = (low + high) >> 1;
+        if (days[middle] <= target) {
+          found = middle;
+          low = middle + 1;
+        } else {
+          high = middle - 1;
+        }
+      }
+      const day = days[found === -1 ? 0 : found];
+      return [date, byDay.get(day) ?? null];
+    }),
+  );
+}

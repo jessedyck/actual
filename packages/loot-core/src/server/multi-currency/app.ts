@@ -16,6 +16,7 @@ export type MultiCurrencyHandlers = {
   'mc-rates-fetch': typeof rates.fetchRange;
   'mc-account-set-currency': typeof setAccountCurrency;
   'mc-recompute-pending': typeof recomputePending;
+  'mc-rates-at': typeof getRatesAt;
 };
 
 export const app = createApp<MultiCurrencyHandlers>();
@@ -31,6 +32,8 @@ app.method('mc-rate-delete', mutator(undoable(deleteRate)));
 app.method('mc-rates-fetch', mutator(rates.fetchRange));
 app.method('mc-account-set-currency', mutator(undoable(setAccountCurrency)));
 app.method('mc-recompute-pending', mutator(undoable(recomputePending)));
+// [fork:mc D-015] Report valuation
+app.method('mc-rates-at', mutator(getRatesAt));
 
 async function getContext(): Promise<
   rates.MultiCurrencyContext & rates.RateSettings
@@ -72,4 +75,16 @@ async function convert({
 
 async function deleteRate({ id }: { id: string }): Promise<void> {
   await rates.deleteRate(id);
+}
+
+async function getRatesAt({
+  base,
+  quote,
+  dates,
+}: {
+  base: string;
+  quote: string;
+  dates: string[];
+}): Promise<Record<string, number | null>> {
+  return rates.getRatesAt(base, quote, dates);
 }

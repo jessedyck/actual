@@ -14,6 +14,12 @@ import { getIntervalFormat } from '#components/reports/ReportOptions';
 import type { FormatType } from '#hooks/useFormat';
 import type { useSpreadsheet } from '#hooks/useSpreadsheet';
 import { aqlQuery } from '#queries/aqlQuery';
+// [fork:mc D-015]
+import { prepareNetWorthValuation } from '#reports/mcReportValuation';
+import type {
+  McNetWorthValuation,
+  McValuationConfig,
+} from '#reports/mcReportValuation';
 
 type Balance = {
   date: string;
@@ -29,7 +35,8 @@ type AccountBalanceData = {
 
 type TransferLeg = Pick<
   TransactionEntity,
-  'id' | 'account' | 'amount' | 'date'
+  // [fork:mc D-015] `mc_amount` for accounts valued in their own currency
+  'id' | 'account' | 'amount' | 'mc_amount' | 'date'
 > & {
   transfer_id: string;
 };
@@ -52,6 +59,8 @@ export function createSpreadsheet(
   firstDayOfWeekIdx: string = '0',
   format: (value: unknown, type?: FormatType) => string,
   dateFormat?: string,
+  // [fork:mc D-015] Balances valued in the display currency
+  mcValuation?: McValuationConfig | null,
 ) {
   return async (
     spreadsheet: ReturnType<typeof useSpreadsheet>,
@@ -118,6 +127,16 @@ export function createSpreadsheet(
     }
 
     const accountIds = accounts.map(account => account.id);
+    // [fork:mc D-015]
+    const valuation = mcValuation
+      ? await prepareNetWorthValuation(mcValuation, {
+          accountIds,
+          startDate,
+          endDate,
+          interval,
+          firstDayOfWeekIdx,
+        })
+      : null;
     const transferLegsPromise =
       accountIds.length === 0
         ? Promise.resolve<TransferLeg[]>([])
@@ -131,7 +150,14 @@ export function createSpreadsheet(
                 transfer_id: { $ne: null },
                 date: { $lte: endDate },
               })
-              .select(['id', 'account', 'amount', 'date', 'transfer_id']),
+              .select([
+                'id',
+                'account',
+                'amount',
+                'mc_amount',
+                'date',
+                'transfer_id',
+              ]),
           ).then(({ data }: { data: TransferLeg[] }) => data);
 
     const accountDataPromise = Promise.all(
@@ -144,7 +170,8 @@ export function createSpreadsheet(
                 account: acct.id,
                 date: { $lt: startDate },
               })
-              .calculate({ $sum: '$amount' }),
+              // [fork:mc D-015]
+              .calculate({ $sum: valuation?.sumField(acct.id) ?? '$amount' }),
           ).then(({ data }) => data),
 
           aqlQuery(
@@ -175,7 +202,8 @@ export function createSpreadsheet(
                         ? 'date'
                         : { $month: '$date' },
                 },
-                { amount: { $sum: '$amount' } },
+                // [fork:mc D-015]
+                { amount: { $sum: valuation?.sumField(acct.id) ?? '$amount' } },
               ]),
           ).then(({ data }) => data),
         ]);
@@ -234,19 +262,31 @@ export function createSpreadsheet(
             account: { $oneof: accountIds },
             transfer_id: { $ne: null },
           })
-          .select(['id', 'account', 'amount', 'date', 'transfer_id']),
+          .select([
+            'id',
+            'account',
+            'amount',
+            'mc_amount',
+            'date',
+            'transfer_id',
+          ]),
       ).then(({ data }: { data: TransferLeg[] }) => data);
       allTransferLegs = [...transferLegs, ...counterpartLegs];
     }
 
     // Prevent paired internal transfers from changing net worth between their
     // two posting dates.
-    alignInternalTransferDates(data, allTransferLegs, {
-      startDate,
-      endDate,
-      interval,
-      firstDayOfWeekIdx,
-    });
+    alignInternalTransferDates(
+      data,
+      allTransferLegs,
+      {
+        startDate,
+        endDate,
+        interval,
+        firstDayOfWeekIdx,
+      },
+      valuation,
+    );
 
     setData(
       recalculate(
@@ -258,6 +298,7 @@ export function createSpreadsheet(
         firstDayOfWeekIdx,
         format,
         dateFormat,
+        valuation,
       ),
     );
   };
@@ -267,6 +308,8 @@ function alignInternalTransferDates(
   data: AccountBalanceData[],
   transferLegs: TransferLeg[],
   range: IntervalRange,
+  // [fork:mc D-015]
+  valuation?: McNetWorthValuation | null,
 ) {
   const accountsById = new Map(data.map(account => [account.id, account]));
   const transfersById = new Map(transferLegs.map(leg => [leg.id, leg]));
@@ -301,7 +344,9 @@ function alignInternalTransferDates(
 
     const account = accountsById.get(earlier.account);
     if (account) {
-      moveTransferLeg(account, earlier, later.date, range);
+      // [fork:mc D-015] In the units the account is summed in
+      const leg = valuation ? valuation.legInSumUnits(earlier) : earlier;
+      moveTransferLeg(account, leg, later.date, range);
     }
   });
 }
@@ -370,6 +415,8 @@ function recalculate(
   firstDayOfWeekIdx: string = '0',
   format: (value: unknown, type?: FormatType) => string,
   dateFormat?: string,
+  // [fork:mc D-015]
+  valuation?: McNetWorthValuation | null,
 ) {
   // Get intervals using the same pattern as other working spreadsheets
   const intervals =
@@ -390,12 +437,20 @@ function recalculate(
       if (account.balances[intervalItem]) {
         balance += account.balances[intervalItem].amount;
       }
-      return balance;
+      // [fork:mc D-015] Valued at the end of the interval
+      return valuation
+        ? valuation.value(account.id, intervalItem, balance)
+        : balance;
     });
   });
 
   const priorPeriodNetWorth = data.reduce(
-    (sum, account) => sum + account.starting,
+    (sum, account) =>
+      sum +
+      // [fork:mc D-015]
+      (valuation
+        ? valuation.valueStarting(account.id, account.starting)
+        : account.starting),
     0,
   );
 

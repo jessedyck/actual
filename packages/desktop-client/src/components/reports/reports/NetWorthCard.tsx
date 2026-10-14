@@ -13,6 +13,8 @@ import type {
 } from '@actual-app/core/types/models';
 
 import { FinancialText } from '#components/FinancialText';
+// [fork:mc D-015]
+import { McReportCurrencyProvider } from '#components/multi-currency/McReportCurrencyProvider';
 import { PrivacyFilter } from '#components/PrivacyFilter';
 import { Change } from '#components/reports/Change';
 import { DateRange } from '#components/reports/DateRange';
@@ -26,6 +28,8 @@ import { useReport } from '#components/reports/useReport';
 import { useDateFormat } from '#hooks/useDateFormat';
 import { useFormat } from '#hooks/useFormat';
 import { useLocale } from '#hooks/useLocale';
+// [fork:mc D-015]
+import { useMcReportCurrencyContext } from '#hooks/useMcReportCurrency';
 import { useSyncedPref } from '#hooks/useSyncedPref';
 
 type NetWorthCardProps = {
@@ -36,7 +40,16 @@ type NetWorthCardProps = {
   onMetaChange: (newMeta: NetWorthWidget['meta']) => void;
 };
 
-export function NetWorthCard({
+// [fork:mc D-015] Can be shown in another currency
+export function NetWorthCard(props: NetWorthCardProps) {
+  return (
+    <McReportCurrencyProvider>
+      <NetWorthCardInner {...props} />
+    </McReportCurrencyProvider>
+  );
+}
+
+function NetWorthCardInner({
   widgetId,
   isEditing,
   accounts,
@@ -73,6 +86,8 @@ export function NetWorthCard({
   const onCardHover = useCallback(() => setIsCardHovered(true), []);
   const onCardHoverEnd = useCallback(() => setIsCardHovered(false), []);
 
+  // [fork:mc D-015]
+  const mcValuation = useMcReportCurrencyContext()?.valuation ?? null;
   const params = useMemo(
     () =>
       netWorthSpreadsheet(
@@ -86,6 +101,7 @@ export function NetWorthCard({
         firstDayOfWeekIdx,
         format,
         dateFormat,
+        mcValuation,
       ),
     [
       start,
@@ -98,6 +114,7 @@ export function NetWorthCard({
       firstDayOfWeekIdx,
       format,
       dateFormat,
+      mcValuation,
     ],
   );
   const data = useReport('net_worth', params);

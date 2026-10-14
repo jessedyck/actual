@@ -15,6 +15,7 @@ import {
 import {
   ensureRates,
   getRate,
+  getRatesAt,
   getStoredRate,
   setManualRate,
   storeRates,
@@ -112,6 +113,45 @@ function jsonResponse(body: unknown) {
 }
 
 describe('exchange rates', () => {
+  // [fork:mc D-015]
+  it('looks up rates for report periods', async () => {
+    await enable();
+    await setManualRate({
+      date: '2016-10-01',
+      base: 'CAD',
+      quote: 'EUR',
+      rate: 0.6,
+    });
+    await setManualRate({
+      date: '2016-10-10',
+      base: 'CAD',
+      quote: 'EUR',
+      rate: 0.7,
+    });
+    expect(
+      await getRatesAt('CAD', 'EUR', [
+        '2016-09-15',
+        '2016-10-05',
+        '2016-10-31',
+      ]),
+    ).toEqual({
+      // Before the first rate: the oldest one
+      '2016-09-15': 0.6,
+      '2016-10-05': 0.6,
+      // Long after the last rate: still the newest one
+      '2016-10-31': 0.7,
+    });
+    expect(await getRatesAt('EUR', 'CAD', ['2016-10-10'])).toEqual({
+      '2016-10-10': 1 / 0.7,
+    });
+    expect(await getRatesAt('USD', 'JPY', ['2016-10-10'])).toEqual({
+      '2016-10-10': null,
+    });
+    expect(await getRatesAt('EUR', 'EUR', ['2016-10-10'])).toEqual({
+      '2016-10-10': 1,
+    });
+  });
+
   it('reuses a recent rate and inverts stored pairs', async () => {
     await storeRates(
       [{ date: '2016-10-02', base: 'EUR', quote: 'CAD', rate: 1.6 }],

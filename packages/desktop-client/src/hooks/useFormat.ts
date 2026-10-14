@@ -14,6 +14,8 @@ import {
 } from '@actual-app/core/shared/util';
 import type { IntegerAmount } from '@actual-app/core/shared/util';
 
+// [fork:mc D-015]
+import { useMcDisplayCurrencyOverride } from './useMcDisplayCurrency';
 import { useSyncedPref } from './useSyncedPref';
 
 export type FormatType =
@@ -116,9 +118,12 @@ export function useFormat(): UseFormatResult {
     'currencySpaceBetweenAmountAndSymbol',
   );
 
+  // [fork:mc D-015] Inside a report shown in another currency
+  const displayCurrencyCode = useMcDisplayCurrencyOverride();
+
   const activeCurrency = useMemo(() => {
-    return getCurrency(defaultCurrencyCodePref || '');
-  }, [defaultCurrencyCodePref]);
+    return getCurrency(displayCurrencyCode || defaultCurrencyCodePref || '');
+  }, [displayCurrencyCode, defaultCurrencyCodePref]);
 
   const numberFormatConfig = useMemo(
     () =>

@@ -25,6 +25,9 @@ import * as d from 'date-fns';
 import { EditablePageHeaderTitle } from '#components/EditablePageHeaderTitle';
 import { FinancialText } from '#components/FinancialText';
 import { MobileBackButton } from '#components/mobile/MobileBackButton';
+// [fork:mc D-015]
+import { McReportCurrencyProvider } from '#components/multi-currency/McReportCurrencyProvider';
+import { McReportCurrencySelect } from '#components/multi-currency/McReportCurrencySelect';
 import { MobilePageHeader, Page, PageHeader } from '#components/Page';
 import { PrivacyFilter } from '#components/PrivacyFilter';
 import { Change } from '#components/reports/Change';
@@ -41,6 +44,8 @@ import { useDashboardWidget } from '#hooks/useDashboardWidget';
 import { useDateFormat } from '#hooks/useDateFormat';
 import { useFormat } from '#hooks/useFormat';
 import { useLocale } from '#hooks/useLocale';
+// [fork:mc D-015]
+import { useMcReportCurrencyContext } from '#hooks/useMcReportCurrency';
 import { useNavigate } from '#hooks/useNavigate';
 import { useRuleConditionFilters } from '#hooks/useRuleConditionFilters';
 import { useSyncedPref } from '#hooks/useSyncedPref';
@@ -59,7 +64,12 @@ export function NetWorth() {
     return <LoadingIndicator />;
   }
 
-  return <NetWorthInner widget={widget} />;
+  // [fork:mc D-015] Can be shown in another currency
+  return (
+    <McReportCurrencyProvider>
+      <NetWorthInner widget={widget} />
+    </McReportCurrencyProvider>
+  );
 }
 
 type NetWorthInnerProps = {
@@ -126,6 +136,8 @@ function NetWorthInner({ widget }: NetWorthInnerProps) {
   const firstDayOfWeekIdx = _firstDayOfWeekIdx || '0';
   const dateFormat = useDateFormat() || 'MM/dd/yyyy';
 
+  // [fork:mc D-015]
+  const mcValuation = useMcReportCurrencyContext()?.valuation ?? null;
   const reportParams = useMemo(
     () =>
       netWorthSpreadsheet(
@@ -139,6 +151,7 @@ function NetWorthInner({ widget }: NetWorthInnerProps) {
         firstDayOfWeekIdx,
         format,
         dateFormat,
+        mcValuation,
       ),
     [
       start,
@@ -151,6 +164,7 @@ function NetWorthInner({ widget }: NetWorthInnerProps) {
       firstDayOfWeekIdx,
       format,
       dateFormat,
+      mcValuation,
     ],
   );
   const data = useReport('net_worth', reportParams);
@@ -339,6 +353,8 @@ function NetWorthInner({ widget }: NetWorthInnerProps) {
           <>
             <IntervalSelector interval={interval} onChange={setInterval} />
             <ModeSelector mode={graphMode} onChange={setGraphMode} />
+            {/* [fork:mc D-015] */}
+            <McReportCurrencySelect />
           </>
         }
       >
