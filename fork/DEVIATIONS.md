@@ -155,6 +155,9 @@ push to `multicurrency` and publishes
 `linux/amd64` and `linux/arm64`. Upstream's own Docker workflows only run on
 upstream or on manual dispatch, so they don't interfere.
 
+A `verify` job (typecheck, core tests, web-client tests) gates the build, so
+a failing commit never replaces the published image.
+
 ## Syncing with upstream
 
 ```bash

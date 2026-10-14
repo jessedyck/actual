@@ -58,9 +58,37 @@ what your bank actually charged.
 
 ## Using official Actual on the same budget
 
-An official Actual client can still open and sync the budget: it ignores the
-fork's data. Avoid editing foreign-currency transactions there, because it
-can't keep both amounts in step.
+An official Actual client of the **same or an older version** than the fork's
+upstream base can open and sync the budget: it ignores the fork's data. Avoid
+editing foreign-currency transactions there, because it can't keep both
+amounts in step.
+
+An official client that is **newer** than the fork's upstream base (for
+example an auto-updated desktop app) can refuse to open the budget with an
+`out-of-sync-migrations` error: the file contains the fork's migration but is
+missing the newer official one. Use the fork's web app on every device.
+
+### Going back to official Actual
+
+The fork only adds to the database, so official Actual can take over a budget
+the fork has used, as long as the fork build you last ran was based on the
+same or a newer upstream version:
+
+1. Sync the fork with upstream up to (at least) the official version you want
+   to run, let the image rebuild, and open the budget with it once.
+2. Switch the image back to `actualbudget/actual-server`.
+
+Official Actual then shows budget-currency amounts everywhere and leaves the
+fork's extra data untouched, so switching back to the fork later still works.
+
+## GitHub Actions in the fork
+
+Only `Fork Docker image` matters for this fork. It checks types and runs the
+tests before it builds and publishes, so a broken commit never becomes the
+`multicurrency` image. The other workflows come from upstream and target its
+infrastructure: they skip themselves, fail, or wait forever for a runner when
+`master` is synced. To silence them, open the fork's _Actions_ tab, pick each
+workflow, then _… → Disable workflow_.
 
 ## Updating from upstream
 

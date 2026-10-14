@@ -22,9 +22,38 @@ env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/actual-server
 
 jobs:
+  # Never publish an image that fails typecheck or tests: it runs against
+  # real budget data.
+  verify:
+    if: github.repository != 'actualbudget/actual'
+    name: Typecheck and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up environment
+        uses: ./.github/actions/setup
+        with:
+          download-translations: 'false'
+
+      - name: Typecheck
+        run: yarn typecheck
+
+      - name: Core tests
+        run: yarn workspace @actual-app/core run test
+
+      - name: Web client tests
+        run: yarn workspace @actual-app/web run test
+
   build:
     # Upstream has its own image pipeline
     if: github.repository != 'actualbudget/actual'
+    needs: verify
     name: Build Docker image
     runs-on: ubuntu-latest
     steps:
