@@ -255,6 +255,15 @@ Update "Last upstream sync" above after each merge.
 
 ## Known upstream test quirk
 
-`parse-file.test.ts › csv import accepts iso-8859-1 as a windows-1252 alias`
-fails in some Node builds without full ICU (the `€` sign isn't decoded). It
-fails the same way on unmodified upstream and is unrelated to this fork.
+Two tests in `parse-file.test.ts` (`handles windows-1252 charset` and
+`csv import accepts iso-8859-1 as a windows-1252 alias`) fail in Node builds
+without full ICU, because `€` and `—` aren't decoded. They fail the same way
+on unmodified upstream and pass in CI.
+
+**Never regenerate snapshots (`vitest -u`) on such a Node**: it records the
+wrongly decoded text. That happened once with
+`parse-file.test.ts.snap`, which broke the CI gate; the fix was to restore
+upstream's text so the snapshot differs from upstream only by
+`"mc_amount": null` lines. Check with
+`node -e "new TextDecoder('windows-1252').decode(Buffer.from([0x80]))"`:
+it must print `€`.
