@@ -22,6 +22,9 @@ import * as d from 'date-fns';
 import { EditablePageHeaderTitle } from '#components/EditablePageHeaderTitle';
 import { FinancialText } from '#components/FinancialText';
 import { MobileBackButton } from '#components/mobile/MobileBackButton';
+// [fork:mc D-015]
+import { McReportCurrencyProvider } from '#components/multi-currency/McReportCurrencyProvider';
+import { McReportCurrencySelect } from '#components/multi-currency/McReportCurrencySelect';
 import { MobilePageHeader, Page, PageHeader } from '#components/Page';
 import { PrivacyFilter } from '#components/PrivacyFilter';
 import { Change } from '#components/reports/Change';
@@ -34,6 +37,8 @@ import { useReport } from '#components/reports/useReport';
 import { useDashboardWidget } from '#hooks/useDashboardWidget';
 import { useFormat } from '#hooks/useFormat';
 import { useLocale } from '#hooks/useLocale';
+// [fork:mc D-015]
+import { useMcReportCurrencyContext } from '#hooks/useMcReportCurrency';
 import { useNavigate } from '#hooks/useNavigate';
 import { useRuleConditionFilters } from '#hooks/useRuleConditionFilters';
 import { useSyncedPref } from '#hooks/useSyncedPref';
@@ -60,7 +65,12 @@ export function CashFlow() {
     return <LoadingIndicator />;
   }
 
-  return <CashFlowInner widget={widget} />;
+  // [fork:mc D-015] Can be shown in another currency
+  return (
+    <McReportCurrencyProvider>
+      <CashFlowInner widget={widget} />
+    </McReportCurrencyProvider>
+  );
 }
 
 type CashFlowInnerProps = {
@@ -108,6 +118,8 @@ function CashFlowInner({ widget }: CashFlowInnerProps) {
     setIsConcise(numDays > 31 * 3);
   }, [start, end]);
 
+  // [fork:mc D-015]
+  const mcValuation = useMcReportCurrencyContext()?.valuation ?? null;
   const params = useMemo(
     () =>
       cashFlowByDate(
@@ -118,8 +130,18 @@ function CashFlowInner({ widget }: CashFlowInnerProps) {
         conditionsOp,
         locale,
         format,
+        mcValuation,
       ),
-    [start, end, isConcise, conditions, conditionsOp, locale, format],
+    [
+      start,
+      end,
+      isConcise,
+      conditions,
+      conditionsOp,
+      locale,
+      format,
+      mcValuation,
+    ],
   );
   const data = useReport('cash_flow', params);
 
@@ -296,6 +318,8 @@ function CashFlowInner({ widget }: CashFlowInnerProps) {
         conditionsOp={conditionsOp}
         onConditionsOpChange={onConditionsOpChange}
       >
+        {/* [fork:mc D-015] */}
+        <McReportCurrencySelect />
         <Button onPress={() => setShowBalance(state => !state)}>
           {showBalance ? t('Hide balance') : t('Show balance')}
         </Button>

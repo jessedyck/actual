@@ -10,6 +10,8 @@ import type { CashFlowWidget } from '@actual-app/core/types/models';
 import { Bar, BarChart, LabelList } from 'recharts';
 
 import { FinancialText } from '#components/FinancialText';
+// [fork:mc D-015]
+import { McReportCurrencyProvider } from '#components/multi-currency/McReportCurrencyProvider';
 import { PrivacyFilter } from '#components/PrivacyFilter';
 import { Change } from '#components/reports/Change';
 import { useRechartsAnimation } from '#components/reports/chart-theme';
@@ -22,6 +24,8 @@ import { calculateTimeRange } from '#components/reports/reportRanges';
 import { simpleCashFlow } from '#components/reports/spreadsheets/cash-flow-spreadsheet';
 import { useReport } from '#components/reports/useReport';
 import { useFormat } from '#hooks/useFormat';
+// [fork:mc D-015]
+import { useMcReportCurrencyContext } from '#hooks/useMcReportCurrency';
 
 import { defaultTimeFrame } from './CashFlow';
 
@@ -98,7 +102,16 @@ type CashFlowCardProps = {
   onMetaChange: (newMeta: CashFlowWidget['meta']) => void;
 };
 
-export function CashFlowCard({
+// [fork:mc D-015] Can be shown in another currency
+export function CashFlowCard(props: CashFlowCardProps) {
+  return (
+    <McReportCurrencyProvider>
+      <CashFlowCardInner {...props} />
+    </McReportCurrencyProvider>
+  );
+}
+
+function CashFlowCardInner({
   widgetId,
   isEditing,
   meta = {},
@@ -125,9 +138,18 @@ export function CashFlowCard({
     latestTransaction,
   );
 
+  // [fork:mc D-015]
+  const mcValuation = useMcReportCurrencyContext()?.valuation ?? null;
   const params = useMemo(
-    () => simpleCashFlow(start, end, meta?.conditions, meta?.conditionsOp),
-    [start, end, meta?.conditions, meta?.conditionsOp],
+    () =>
+      simpleCashFlow(
+        start,
+        end,
+        meta?.conditions,
+        meta?.conditionsOp,
+        mcValuation,
+      ),
+    [start, end, meta?.conditions, meta?.conditionsOp, mcValuation],
   );
   const data = useReport('cash_flow_simple', params);
 

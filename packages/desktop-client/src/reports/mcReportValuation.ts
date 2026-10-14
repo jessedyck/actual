@@ -160,3 +160,67 @@ export async function prepareNetWorthValuation(
       valueAt(accountId, startingDate, balance),
   };
 }
+
+export type McFlowConversion = {
+  /** An amount of a period (`YYYY-MM` month or `YYYY-MM-DD` day) */
+  convert: (period: string, amount: number) => number;
+  /** A balance at the end of `date` */
+  convertAt: (date: string, amount: number) => number;
+};
+
+/**
+ * Converts budget-currency flows into the display currency: a day's flows
+ * at that day's rate, a month's at the average of its daily rates. Null
+ * when the display currency is the budget currency.
+ */
+export async function prepareFlowConversion(
+  { budgetCurrency, displayCurrency }: McValuationConfig,
+  {
+    startDate,
+    endDate,
+    extraDates = [],
+  }: { startDate: string; endDate: string; extraDates?: string[] },
+): Promise<McFlowConversion | null> {
+  if (displayCurrency === budgetCurrency) {
+    return null;
+  }
+  const today = monthUtils.currentDay();
+  const lastDay = endDate > today ? today : endDate;
+  const days =
+    startDate <= lastDay
+      ? monthUtils.dayRangeInclusive(startDate, lastDay)
+      : [];
+  const rates = await send('mc-rates-at', {
+    base: budgetCurrency,
+    quote: displayCurrency,
+    dates: [...days, lastDay, ...extraDates],
+  });
+
+  const monthly = new Map<string, { sum: number; count: number }>();
+  for (const day of days) {
+    const rate = rates[day];
+    if (rate != null) {
+      const month = monthUtils.getMonth(day);
+      const entry = monthly.get(month) ?? { sum: 0, count: 0 };
+      monthly.set(month, { sum: entry.sum + rate, count: entry.count + 1 });
+    }
+  }
+  const latestRate = rates[lastDay] ?? null;
+
+  const rateFor = (period: string): number | null => {
+    if (period.length === 7) {
+      const entry = monthly.get(period);
+      return entry ? entry.sum / entry.count : latestRate;
+    }
+    return rates[period] ?? latestRate;
+  };
+  const apply = (rate: number | null, amount: number) =>
+    rate == null
+      ? amount
+      : convertMinorUnits(amount, rate, budgetCurrency, displayCurrency);
+
+  return {
+    convert: (period, amount) => apply(rateFor(period), amount),
+    convertAt: (date, amount) => apply(rates[date] ?? latestRate, amount),
+  };
+}

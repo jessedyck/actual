@@ -37,16 +37,20 @@ the fork can switch to upstream's own implementation as it lands.
 | Mobile: amounts and reconcile in the account's currency                        | Done    |
 | Exchange rate adjustment to today's value (desktop)                            | Done    |
 | Net worth report: accounts valued at each period's rate, shown in any currency | Done    |
-| Cash flow and custom reports in another currency                               | Planned |
+| Cash flow report (page and card) in any currency                               | Done    |
+| Custom and spending reports in another currency                                | Planned |
 
 ## Log
 
 What was done, newest first. All of it was implemented by an AI assistant;
 [DEVIATIONS.md](DEVIATIONS.md) has the details of every change.
 
+- **2026-10-14** · Cash flow report (page and dashboard card) in any
+  currency, each day or month at its own rate.
 - **2026-10-14** · Net worth report: accounts in other currencies are
   valued at the rate of each period, and the report (page and dashboard
   card) can be shown in any currency.
+  [546ca7b](https://github.com/jessedyck/actual/commit/546ca7b)
 - **2026-10-14** · Exchange rate adjustment: one click records the
   difference between what an account in another currency is worth today and
   its value in the budget.

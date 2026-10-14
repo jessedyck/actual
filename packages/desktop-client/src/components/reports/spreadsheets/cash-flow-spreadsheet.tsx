@@ -14,12 +14,17 @@ import { FinancialText } from '#components/FinancialText';
 import { indexCashFlow, runAll } from '#components/reports/util';
 import type { FormatType } from '#hooks/useFormat';
 import type { useSpreadsheet } from '#hooks/useSpreadsheet';
+// [fork:mc D-015]
+import { prepareFlowConversion } from '#reports/mcReportValuation';
+import type { McValuationConfig } from '#reports/mcReportValuation';
 
 export function simpleCashFlow(
   startMonth: string,
   endMonth: string,
   conditions: RuleConditionEntity[] = [],
   conditionsOp: 'and' | 'or' = 'and',
+  // [fork:mc D-015] Totals in the display currency
+  mcValuation?: McValuationConfig | null,
 ) {
   const start = monthUtils.firstDayOfMonth(startMonth);
   const end = monthUtils.lastDayOfMonth(endMonth);
@@ -33,7 +38,8 @@ export function simpleCashFlow(
     });
     const conditionsOpKey = conditionsOp === 'or' ? '$or' : '$and';
 
-    function makeQuery() {
+    // [fork:mc D-015] Split from `makeQuery` so totals can be grouped
+    function makeBaseQuery() {
       return q('transactions')
         .filter({
           [conditionsOpKey]: filters,
@@ -50,8 +56,51 @@ export function simpleCashFlow(
           ],
           'account.offbudget': false,
           'payee.transfer_acct': null,
+        });
+    }
+
+    function makeQuery() {
+      return makeBaseQuery().calculate({ $sum: '$amount' });
+    }
+
+    // [fork:mc D-015] In another currency: summed by day (by month for
+    // ranges over three months, like the cash flow page), each at its rate
+    const conversion = mcValuation
+      ? await prepareFlowConversion(mcValuation, {
+          startDate: start,
+          endDate: end,
         })
-        .calculate({ $sum: '$amount' });
+      : null;
+    if (conversion) {
+      const isConcise =
+        d.differenceInCalendarDays(
+          d.parseISO(endMonth),
+          d.parseISO(startMonth),
+        ) >
+        31 * 3;
+      const byPeriod = (amount: { $gt: number } | { $lt: number }) =>
+        isConcise
+          ? makeBaseQuery()
+              .filter({ amount })
+              .groupBy({ $month: '$date' })
+              .select([
+                { date: { $month: '$date' } },
+                { amount: { $sum: '$amount' } },
+              ])
+          : makeBaseQuery()
+              .filter({ amount })
+              .groupBy('date')
+              .select(['date', { amount: { $sum: '$amount' } }]);
+      const total = (rows: Array<{ date: string; amount: number }>) =>
+        rows.reduce(
+          (sum, row) => sum + conversion.convert(row.date, row.amount),
+          0,
+        );
+      return runAll([byPeriod({ $gt: 0 }), byPeriod({ $lt: 0 })], data => {
+        setData({
+          graphData: { income: total(data[0]), expense: total(data[1]) },
+        });
+      });
     }
 
     return runAll(
@@ -79,6 +128,8 @@ export function cashFlowByDate(
   conditionsOp: 'and' | 'or',
   locale: Locale,
   format: (value: unknown, type?: FormatType) => string,
+  // [fork:mc D-015] Flows in the display currency
+  mcValuation?: McValuationConfig | null,
 ) {
   const start = monthUtils.firstDayOfMonth(startMonth);
   const end = monthUtils.lastDayOfMonth(endMonth);
@@ -126,6 +177,16 @@ export function cashFlowByDate(
         ]);
     }
 
+    // [fork:mc D-015]
+    const startingDate = monthUtils.subDays(start, 1);
+    const conversion = mcValuation
+      ? await prepareFlowConversion(mcValuation, {
+          startDate: start,
+          endDate: fixedEnd,
+          extraDates: [startingDate],
+        })
+      : null;
+
     return runAll(
       [
         q('transactions')
@@ -139,7 +200,26 @@ export function cashFlowByDate(
         makeQuery().filter({ amount: { $lt: 0 } }),
       ],
       data => {
-        setData(recalculate(data, start, fixedEnd, isConcise, locale, format));
+        // [fork:mc D-015] Each period's flows at its rate; the balance
+        // starts from the converted opening balance and adds them up
+        const rows: Parameters<typeof recalculate>[0] = data;
+        const [startingBalance, income, expense] = rows;
+        const converted: Parameters<typeof recalculate>[0] = conversion
+          ? [
+              conversion.convertAt(startingDate, startingBalance),
+              income.map(row => ({
+                ...row,
+                amount: conversion.convert(row.date, row.amount),
+              })),
+              expense.map(row => ({
+                ...row,
+                amount: conversion.convert(row.date, row.amount),
+              })),
+            ]
+          : rows;
+        setData(
+          recalculate(converted, start, fixedEnd, isConcise, locale, format),
+        );
       },
     );
   };
