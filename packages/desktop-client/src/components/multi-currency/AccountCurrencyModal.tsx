@@ -137,8 +137,9 @@ export function AccountCurrencyModal({ accountId }: AccountCurrencyModalProps) {
               <Paragraph style={{ margin: 0, color: theme.warningText }}>
                 <Trans count={result.missingRates}>
                   Done. {{ count: result.missingRates }} transactions had no
-                  exchange rate yet. They are converted once a rate is available
-                  (Settings → Multi-currency accounts → Pending conversions).
+                  exchange rate yet. Their amounts are filled in once a rate is
+                  available (Settings → Multi-currency accounts → Budget values
+                  waiting for a rate).
                 </Trans>
               </Paragraph>
             )}

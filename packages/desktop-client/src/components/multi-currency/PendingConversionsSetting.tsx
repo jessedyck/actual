@@ -21,7 +21,7 @@ export function PendingConversionsSetting() {
       const { updated, stillPending } = await send('mc-recompute-pending');
       setResult(
         [
-          t('Converted {{count}} transactions.', { count: updated }),
+          t('Filled in {{count}} transactions.', { count: updated }),
           stillPending > 0
             ? t('{{count}} still have no exchange rate.', {
                 count: stillPending,
@@ -40,12 +40,13 @@ export function PendingConversionsSetting() {
 
   return (
     <SettingsRow
-      title={t('Pending conversions')}
+      title={t('Budget values waiting for a rate')}
       description={
         <>
           <Trans>
-            Transactions saved while no exchange rate was available keep a
-            budget amount of 0 until a rate is found. This converts them now.
+            When no exchange rate can be downloaded (for example while offline),
+            a transaction in another currency is saved with a budget value of 0
+            until a rate is found. This fills those values in now.
           </Trans>
           {result && (
             <Text style={{ display: 'block', color: theme.noticeTextLight }}>
@@ -56,7 +57,7 @@ export function PendingConversionsSetting() {
       }
       control={
         <ButtonWithLoading isLoading={isLoading} onPress={onConvert}>
-          <Trans>Convert pending</Trans>
+          <Trans>Fill in now</Trans>
         </ButtonWithLoading>
       }
     />

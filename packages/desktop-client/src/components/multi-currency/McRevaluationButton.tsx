@@ -99,7 +99,7 @@ export function McRevaluationButton({
               <Text style={{ color: theme.warningText }}>
                 <Trans count={pending}>
                   {{ count: pending }} transactions are still waiting for an
-                  exchange rate. Convert them first in Settings.
+                  exchange rate. Fill in their budget values first in Settings.
                 </Trans>
               </Text>
             )}

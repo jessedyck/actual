@@ -37,6 +37,7 @@ retire fork code as it does.
   - `packages/desktop-client/src/accounts/mcRevaluation.ts`
   - `packages/desktop-client/src/transactions/mcRules.ts`
   - `packages/desktop-client/src/util/mcErrorMessage.ts`
+  - `packages/desktop-client/src/hooks/useMcAmountCellFormatter.ts`
 - Everything the fork stores is prefixed `mc_` (columns, the rate table,
   synced preference keys). An upstream migration can therefore never collide
   with fork data, even if upstream picks names like `currency`.
@@ -185,9 +186,11 @@ _Reconcile:_ remove both call sites once upstream converts amounts itself.
   otherwise be read in the wrong currency. Its description points to
   _Change budget currency_ (D-016).
 - Fork-owned rows in `components/multi-currency/`: automatic downloads
-  (`mcRatesOnline`), service URL (`mcRatesUrl`), convert pending
-  (`mc-recompute-pending`), and the stored rates with manual entry and
-  deletion. Saving a manual rate also converts pending transactions.
+  (`mcRatesOnline`), service URL (`mcRatesUrl`), budget values waiting for a
+  rate (`mc-recompute-pending`), and the stored rates with manual entry and
+  deletion. Saving a manual rate also fills in pending budget values. The
+  group's description says that an account keeps one currency and the
+  budget counts its transactions in the budget currency.
 
 _Reconcile:_ remove the nesting and both guards with the flag. If upstream
 adds rate settings, move `mcRatesOnline` / `mcRatesUrl` into them.
@@ -268,7 +271,9 @@ account's currency too, so imports into converted accounts keep working.
   upstream's `CellValue` otherwise. The account header (`accounts/Header.tsx`)
   renders the fork's `McAccountBalances` instead of `Balances` for foreign
   accounts: balance in the account currency, its value today in the budget
-  currency, and _In budget_ (the sum of `amount`). Group totals (On budget,
+  currency, and _In budget_ (the sum of `amount`). An info button (fork
+  `McBalancesHelp`) explains the three with the account's own numbers and
+  why _Worth today_ and _In budget_ differ. Group totals (On budget,
   Off budget, All accounts) stay budget-currency sums of `amount`. The
   mobile account page (`mobile/transactions/TransactionListWithBalances.tsx`,
   new prop `mcAccount`) shows balance, cleared and uncleared the same way.
@@ -308,8 +313,14 @@ amounts at the register's boundary instead of changing that logic:
   up, so previews continue the balance in the account's currency.
 - `TransactionsTable.tsx`: the Payment and Deposit tooltips show the budget
   amount (`useMcBudgetAmountTitle`).
-- Views with several accounts (All accounts, On budget, categories) keep
-  showing budget amounts, as upstream does.
+- Views with several accounts (All accounts, On budget, a category's
+  transactions) show each transaction in its own account's currency, with
+  the currency's symbol: `useAccountCurrencyRegister(account, { mixed })`
+  converts row by row (`toAccountCurrencyViews`,
+  `diffFromAccountCurrencyViews`), and the Payment, Deposit and running
+  balance cells add the symbol (fork hook `useMcAmountCellFormatter`; the
+  running balance stays in the budget currency). `useAmountColumnWidths`
+  takes a new optional `symbolChars` so the columns fit the symbols.
 
 Mobile:
 
@@ -336,8 +347,9 @@ don't match transactions being typed in a foreign-currency account, and
 split rules don't apply to them.
 
 _Reconcile:_ remove the swap from `TransactionList.tsx`, the prop, both
-sums and the `AllTransactions` conversion in `Account.tsx`, and the tooltip
-in `TransactionsTable.tsx` once upstream's register handles account
+sums and the `AllTransactions` conversion in `Account.tsx`, and the tooltip,
+the cell formatter and the `symbolChars` parameter in
+`TransactionsTable.tsx` once upstream's register handles account
 currencies.
 
 ### D-014: Exchange rate adjustment

@@ -126,6 +126,10 @@ import type {
 } from '#hooks/useDragDrop';
 import { useLocalPref } from '#hooks/useLocalPref';
 // [fork:mc D-013]
+import {
+  useMcAmountCellFormatter,
+  useMcAmountSymbolChars,
+} from '#hooks/useMcAmountCellFormatter';
 import { useMcBudgetAmountTitle } from '#hooks/useMcBudgetAmountTitle';
 import { useMergedRefs } from '#hooks/useMergedRefs';
 import { usePrevious } from '#hooks/usePrevious';
@@ -204,6 +208,8 @@ function measureAmountColumnWidth(values: string[], minWidth: number) {
 export function useAmountColumnWidths(
   transactions: TransactionEntity[],
   balances: Record<TransactionEntity['id'], IntegerAmount> | null,
+  // [fork:mc D-013] Room for the currency symbols some registers show
+  symbolChars = 0,
 ): AmountColumnWidths {
   const debitCreditValues = transactions.map(t =>
     integerToCurrency(Math.abs(t.amount ?? 0)),
@@ -212,13 +218,14 @@ export function useAmountColumnWidths(
     ? Object.values(balances).map(balance => integerToCurrency(balance))
     : [];
 
+  const symbol = ' '.repeat(symbolChars);
   return {
     amount: measureAmountColumnWidth(
-      debitCreditValues,
+      debitCreditValues.map(value => value + symbol),
       DEFAULT_AMOUNT_COLUMN_WIDTHS.amount,
     ),
     balance: measureAmountColumnWidth(
-      balanceValues,
+      balanceValues.map(value => value + symbol),
       DEFAULT_AMOUNT_COLUMN_WIDTHS.balance,
     ),
   };
@@ -1137,8 +1144,13 @@ const Transaction = memo(function Transaction({
     setSyncTransferDatePref(checked ? 'true' : 'false');
   const transferDateSyncSeq = useRef(0);
   // [fork:mc D-013] In a foreign-currency register, amounts are in the
-  // account's currency; the tooltip gives the budget amount
+  // account's currency; the tooltip gives the budget amount. A register of
+  // several accounts shows each amount with its currency.
   const mcBudgetTitle = useMcBudgetAmountTitle(originalTransaction);
+  const mcAmountText = useMcAmountCellFormatter(
+    originalTransaction,
+    columns.includes('account'),
+  );
 
   const onUpdate: TransactionUpdateFunction = async (name, value) => {
     // Had some issues with this is called twice which is a problem now that we are showing a warning
@@ -1998,7 +2010,11 @@ const Transaction = memo(function Transaction({
             value={debit === '' && credit === '' ? amountToCurrency(0) : debit}
             formatter={value =>
               // reformat value so since we might have kept decimals
-              value ? amountToCurrency(currencyToAmount(value) || 0) : ''
+              value
+                ? // [fork:mc D-013]
+                  (mcAmountText?.amount(value) ??
+                  amountToCurrency(currencyToAmount(value) || 0))
+                : ''
             }
             valueStyle={valueStyle}
             textAlign="right"
@@ -2034,7 +2050,11 @@ const Transaction = memo(function Transaction({
             value={credit}
             formatter={value =>
               // reformat value so since we might have kept decimals
-              value ? amountToCurrency(currencyToAmount(value) || 0) : ''
+              value
+                ? // [fork:mc D-013]
+                  (mcAmountText?.amount(value) ??
+                  amountToCurrency(currencyToAmount(value) || 0))
+                : ''
             }
             valueStyle={valueStyle}
             textAlign="right"
@@ -2065,7 +2085,9 @@ const Transaction = memo(function Transaction({
             value={
               runningBalance == null || isChild || isTemporaryId(id)
                 ? ''
-                : integerToCurrency(runningBalance)
+                : // [fork:mc D-013]
+                  (mcAmountText?.balance(runningBalance) ??
+                  integerToCurrency(runningBalance))
             }
             valueStyle={{
               color:
@@ -2754,9 +2776,14 @@ function TransactionTableInner({
     [props.transactions, props.showReconciled],
   );
 
+  // [fork:mc D-013]
+  const mcSymbolChars = useMcAmountSymbolChars(
+    props.columns.includes('account'),
+  );
   const amountColumnWidths = useAmountColumnWidths(
     transactionsToRender,
     props.balances,
+    mcSymbolChars,
   );
 
   const renderRow: TableProps<TransactionEntity>['renderItem'] = ({

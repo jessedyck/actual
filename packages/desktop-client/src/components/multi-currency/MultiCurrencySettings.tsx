@@ -21,7 +21,8 @@ export function MultiCurrencySettings() {
     <SettingsGroup
       title={t('Multi-currency accounts')}
       description={t(
-        'Accounts can use their own currency. Their amounts are converted to the budget currency with daily exchange rates. Experimental: this comes from a personal fork of Actual.',
+        "Each account can have its own currency. Its transactions stay in that currency, as your bank recorded them; the budget counts them in {{budgetCurrency}} at each day's exchange rate. Experimental: this comes from a personal fork of Actual.",
+        { budgetCurrency: budgetCurrency || t('the budget currency') },
       )}
     >
       {budgetCurrency === '' ? (

@@ -206,8 +206,9 @@ export function TransactionList({
   const isLearnCategoriesEnabled = String(learnCategories) === 'true';
 
   // [fork:mc D-013] A foreign-currency account's register works in the
-  // account's currency: transactions come in swapped and go out swapped back
-  const mcRegister = useAccountCurrencyRegister(account);
+  // account's currency: transactions come in swapped and go out swapped back.
+  // A register of several accounts shows each in its own account's currency.
+  const mcRegister = useAccountCurrencyRegister(account, { mixed: !account });
   const viewTransactions = useMemo(
     () => mcRegister.toView(transactions),
     [mcRegister, transactions],
@@ -323,7 +324,7 @@ export function TransactionList({
       // register they can't change the amount being typed
       const afterRules = await runRulesInAccountCurrency(
         transaction,
-        mcRegister.isActive ? mcRegister.currency : null,
+        mcRegister.currencyFor(transaction),
       );
 
       // Show formula errors if any

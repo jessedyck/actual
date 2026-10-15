@@ -140,8 +140,9 @@ function AllTransactions({
     isLoading: isPreviewTransactionsLoading,
   } = useAccountPreviewTransactions({ accountId });
   // [fork:mc D-013] A foreign-currency account's balances and scheduled
-  // previews in the register's units, so previews add up in its currency
-  const mcRegister = useAccountCurrencyRegister(account);
+  // previews in the register's units, so previews add up in its currency;
+  // in a register of several accounts, each in its account's currency
+  const mcRegister = useAccountCurrencyRegister(account, { mixed: !account });
   const balances = useMemo(
     () => mcRegister.balancesToView(storedBalances),
     [mcRegister, storedBalances],

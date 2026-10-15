@@ -24,6 +24,7 @@ import { useSelectedItems } from '#hooks/useSelected';
 import { useSheetValue } from '#hooks/useSheetValue';
 
 import { McBalancePill } from './McBalancePill';
+import { McBalancesHelp } from './McBalancesHelp';
 import { McRevaluationButton } from './McRevaluationButton';
 
 type McAccountBalancesProps = {
@@ -141,6 +142,14 @@ export function McAccountBalances({
         title={t(
           "The budget-currency total of this account's transactions, at the rates they were recorded with",
         )}
+      />
+      <McBalancesHelp
+        currency={currency}
+        budgetCurrency={budgetCurrency}
+        balance={balance}
+        worthToday={worthToday}
+        budgetValue={budgetValue ?? 0}
+        rate={rate}
       />
       {/* [fork:mc D-014] */}
       <McRevaluationButton
