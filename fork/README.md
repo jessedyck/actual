@@ -47,11 +47,15 @@ the fork can switch to upstream's own implementation as it lands.
 What was done, newest first. All of it was implemented by an AI assistant;
 [DEVIATIONS.md](DEVIATIONS.md) has the details of every change.
 
+- **2026-10-15** · Fixes found while reviewing screenshots: the stored
+  exchange rates list no longer squashes its rows when it holds many rates,
+  and the currency change's result counts a split once, like its preview.
 - **2026-10-15** · Change budget currency: moves the whole budget, history
   included, to another currency. Each transaction is converted at its own
   date's rate, each month's budget at that month's rates; accounts can keep
   their currency, and accounts recorded with the rule-template workaround
   take their amounts from the notes.
+  [1c4bfa7](https://github.com/jessedyck/actual/commit/1c4bfa7)
 - **2026-10-14** · Custom reports and the spending comparison (pages and
   dashboard cards) in any currency, each period at its own rate.
   [aef4b22](https://github.com/jessedyck/actual/commit/aef4b22)

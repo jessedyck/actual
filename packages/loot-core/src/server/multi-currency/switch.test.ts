@@ -304,7 +304,8 @@ describe('changing the budget currency', () => {
       accountCurrencies: { chq: 'CAD', eur: 'EUR', gbp: 'GBP' },
     });
     expect(result).toEqual({
-      transactions: 15,
+      // A split counts once, as in the preview
+      transactions: 10,
       budgets: 4,
       rules: 2,
       deletedRules: 1,

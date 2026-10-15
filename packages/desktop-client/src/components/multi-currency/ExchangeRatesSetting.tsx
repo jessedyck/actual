@@ -89,6 +89,8 @@ export function ExchangeRatesSetting({
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
+                // Rows keep their height and the list scrolls
+                flexShrink: 0,
                 gap: spacing.md,
                 padding: `${spacing.xs}px 0`,
                 borderTop: `1px solid ${theme.settingsCardBorder}`,

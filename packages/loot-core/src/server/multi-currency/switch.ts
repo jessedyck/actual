@@ -791,7 +791,10 @@ export async function switchBudgetCurrency({
           amount: next.amount,
           mc_amount: mcAmount,
         });
-        updatedTransactions++;
+        // Counted like the preview: a split once
+        if (!row.is_child) {
+          updatedTransactions++;
+        }
       }
     }
     for (const [table, rows] of [
