@@ -14,6 +14,8 @@ import { send } from '@actual-app/core/platform/client/connection';
 import { currencies } from '@actual-app/core/shared/currencies';
 import * as monthUtils from '@actual-app/core/shared/months';
 
+import { mcErrorMessage } from '#util/mcErrorMessage';
+
 type AddExchangeRateFormProps = {
   budgetCurrency: string;
   defaultBase: string;
@@ -72,7 +74,7 @@ export function AddExchangeRateForm({
       onAdded();
     } catch (error) {
       setMessage({
-        text: error instanceof Error ? error.message : String(error),
+        text: mcErrorMessage(error),
         isError: true,
       });
     }

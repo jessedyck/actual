@@ -1,6 +1,6 @@
 // [fork:mc D-007] Settings → General → Multi-currency accounts: rate
-// downloads, the rate service, pending conversions and stored exchange rates.
-// See fork/DEVIATIONS.md.
+// downloads, the rate service, pending conversions, stored exchange rates
+// and changing the budget currency (D-016). See fork/DEVIATIONS.md.
 import { useTranslation } from 'react-i18next';
 
 import { SettingsGroup } from '#components/settings/SettingsGroup';
@@ -11,6 +11,7 @@ import { ExchangeRatesSetting } from './ExchangeRatesSetting';
 import { PendingConversionsSetting } from './PendingConversionsSetting';
 import { RateDownloadSetting } from './RateDownloadSetting';
 import { RateServiceSetting } from './RateServiceSetting';
+import { SwitchCurrencySetting } from './SwitchCurrencySetting';
 
 export function MultiCurrencySettings() {
   const { t } = useTranslation();
@@ -36,6 +37,7 @@ export function MultiCurrencySettings() {
           <RateServiceSetting />
           <PendingConversionsSetting />
           <ExchangeRatesSetting budgetCurrency={budgetCurrency} />
+          <SwitchCurrencySetting />
         </>
       )}
     </SettingsGroup>

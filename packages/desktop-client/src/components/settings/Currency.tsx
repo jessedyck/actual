@@ -8,7 +8,10 @@ import { css } from '@emotion/css';
 
 import { Checkbox } from '#components/forms';
 // [fork:mc D-007]
-import { useHasForeignCurrencyAccounts } from '#hooks/useMultiCurrency';
+import {
+  useHasForeignCurrencyAccounts,
+  useMultiCurrency,
+} from '#hooks/useMultiCurrency';
 import { useSyncedPref } from '#hooks/useSyncedPref';
 
 import { SettingsGroup } from './SettingsGroup';
@@ -84,6 +87,7 @@ export function CurrencySettings() {
   // [fork:mc D-007] Existing budget amounts would be read in the wrong
   // currency if the budget currency changed while accounts use their own
   const isBudgetCurrencyLocked = useHasForeignCurrencyAccounts();
+  const { isEnabled: isMultiCurrencyEnabled } = useMultiCurrency();
 
   const [symbolPosition, setSymbolPositionPref] = useSyncedPref(
     'currencySymbolPosition',
@@ -150,11 +154,16 @@ export function CurrencySettings() {
       <SettingsRow
         title={t('Default currency')}
         description={
+          // [fork:mc D-016] Pointing to the conversion
           isBudgetCurrencyLocked
             ? t(
-                'Locked because some accounts use their own currency. Change those accounts back to the budget currency to unlock it.',
+                'Locked because some accounts use their own currency. To move the budget to another currency, use Change budget currency under Multi-currency accounts.',
               )
-            : undefined
+            : isMultiCurrencyEnabled
+              ? t(
+                  'Changing it only relabels existing amounts. To convert the budget and its history to another currency, use Change budget currency under Multi-currency accounts.',
+                )
+              : undefined
         }
         control={
           <Select

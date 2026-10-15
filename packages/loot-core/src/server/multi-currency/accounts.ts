@@ -65,6 +65,14 @@ export function parseWorkaroundNote(
   return amountToInteger(parseFloat(match[1]), getDecimalPlaces(currency));
 }
 
+/** [fork:mc D-016] The currency of an amount written by the workaround. */
+export function getWorkaroundNoteCurrency(
+  notes: string | null | undefined,
+): string | null {
+  const match = notes ? WORKAROUND_NOTE.exec(notes) : null;
+  return match ? match[2] : null;
+}
+
 type BackfillRow = {
   id: string;
   amount: number;

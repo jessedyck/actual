@@ -86,6 +86,8 @@ import { TransferOwnership } from './modals/TransferOwnership';
 import { UnmigrateBudgetAutomationsModal } from './modals/UnmigrateBudgetAutomationsModal';
 // [fork:mc D-012]
 import { AccountCurrencyModal } from './multi-currency/AccountCurrencyModal';
+// [fork:mc D-016]
+import { SwitchCurrencyModal } from './multi-currency/SwitchCurrencyModal';
 import { CategoryLearning } from './payees/CategoryLearning';
 import { DiscoverSchedules } from './schedules/DiscoverSchedules';
 import { PostsOfflineNotification } from './schedules/PostsOfflineNotification';
@@ -146,6 +148,10 @@ export function Modals() {
         // [fork:mc D-012]
         case 'mc-account-currency':
           return <AccountCurrencyModal key={key} {...modal.options} />;
+
+        // [fork:mc D-016]
+        case 'mc-switch-currency':
+          return <SwitchCurrencyModal key={key} />;
 
         case 'close-account':
           return <CloseAccountModal key={key} {...modal.options} />;

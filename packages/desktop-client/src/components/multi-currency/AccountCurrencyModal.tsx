@@ -27,6 +27,7 @@ import {
 } from '#components/common/Modal';
 import { useAccount } from '#hooks/useAccount';
 import { useMultiCurrency } from '#hooks/useMultiCurrency';
+import { mcErrorMessage } from '#util/mcErrorMessage';
 
 type AccountCurrencyModalProps = {
   accountId: AccountEntity['id'];
@@ -77,9 +78,7 @@ export function AccountCurrencyModal({ accountId }: AccountCurrencyModalProps) {
         setResult(response);
       }
     } catch (saveError) {
-      setError(
-        saveError instanceof Error ? saveError.message : String(saveError),
-      );
+      setError(mcErrorMessage(saveError));
     } finally {
       setIsSaving(false);
     }

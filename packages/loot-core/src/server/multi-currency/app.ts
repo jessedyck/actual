@@ -5,6 +5,7 @@ import { undoable } from '#server/undo';
 
 import { recomputePending, setAccountCurrency } from './accounts';
 import * as rates from './rates';
+import { previewCurrencySwitch, switchBudgetCurrency } from './switch';
 
 export type MultiCurrencyHandlers = {
   'mc-get-context': typeof getContext;
@@ -17,6 +18,8 @@ export type MultiCurrencyHandlers = {
   'mc-account-set-currency': typeof setAccountCurrency;
   'mc-recompute-pending': typeof recomputePending;
   'mc-rates-at': typeof getRatesAt;
+  'mc-switch-preview': typeof previewCurrencySwitch;
+  'mc-switch-apply': typeof switchBudgetCurrency;
 };
 
 export const app = createApp<MultiCurrencyHandlers>();
@@ -34,6 +37,9 @@ app.method('mc-account-set-currency', mutator(undoable(setAccountCurrency)));
 app.method('mc-recompute-pending', mutator(undoable(recomputePending)));
 // [fork:mc D-015] Report valuation
 app.method('mc-rates-at', mutator(getRatesAt));
+// [fork:mc D-016] Changing the budget currency
+app.method('mc-switch-preview', mutator(previewCurrencySwitch));
+app.method('mc-switch-apply', mutator(undoable(switchBudgetCurrency)));
 
 async function getContext(): Promise<
   rates.MultiCurrencyContext & rates.RateSettings

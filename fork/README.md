@@ -39,6 +39,7 @@ the fork can switch to upstream's own implementation as it lands.
 | Net worth report: accounts valued at each period's rate, shown in any currency | Done    |
 | Cash flow report (page and card) in any currency                               | Done    |
 | Custom and spending reports (pages and cards) in any currency                  | Done    |
+| Changing the budget currency (for example CAD to EUR), history included        | Done    |
 | Other reports (summary, budget analysis, calendar…) in another currency        | Planned |
 
 ## Log
@@ -46,8 +47,14 @@ the fork can switch to upstream's own implementation as it lands.
 What was done, newest first. All of it was implemented by an AI assistant;
 [DEVIATIONS.md](DEVIATIONS.md) has the details of every change.
 
+- **2026-10-15** · Change budget currency: moves the whole budget, history
+  included, to another currency. Each transaction is converted at its own
+  date's rate, each month's budget at that month's rates; accounts can keep
+  their currency, and accounts recorded with the rule-template workaround
+  take their amounts from the notes.
 - **2026-10-14** · Custom reports and the spending comparison (pages and
   dashboard cards) in any currency, each period at its own rate.
+  [aef4b22](https://github.com/jessedyck/actual/commit/aef4b22)
 - **2026-10-14** · Cash flow report (page and dashboard card) in any
   currency, each day or month at its own rate.
   [ad24fc3](https://github.com/jessedyck/actual/commit/ad24fc3)

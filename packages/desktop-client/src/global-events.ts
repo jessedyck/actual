@@ -84,6 +84,12 @@ export function handleGlobalEvents(store: AppStore, queryClient: QueryClient) {
       );
     }
 
+    // [fork:mc D-016] Undoing a budget currency change also restores the
+    // currency and number format prefs
+    if (tables.includes('preferences')) {
+      promises.push(store.dispatch(loadPrefs()));
+    }
+
     const tagged = undo.getTaggedState(undoTag);
 
     if (tagged) {

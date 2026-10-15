@@ -8,6 +8,7 @@ import { theme } from '@actual-app/components/theme';
 import { send } from '@actual-app/core/platform/client/connection';
 
 import { SettingsRow } from '#components/settings/SettingsRow';
+import { mcErrorMessage } from '#util/mcErrorMessage';
 
 export function PendingConversionsSetting() {
   const { t } = useTranslation();
@@ -31,7 +32,7 @@ export function PendingConversionsSetting() {
           .join(' '),
       );
     } catch (error) {
-      setResult(error instanceof Error ? error.message : String(error));
+      setResult(mcErrorMessage(error));
     } finally {
       setIsLoading(false);
     }
