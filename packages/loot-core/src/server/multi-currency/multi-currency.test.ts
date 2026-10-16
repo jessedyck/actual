@@ -413,10 +413,11 @@ describe('transaction conversions', () => {
     const children = await Promise.all(
       ['c1', 'c2', 'c3'].map(id => getTransaction(id)),
     );
-    expect(parent?.amount).toBe(-612);
+    // [fork:mc D-017] October's average of 0.6 and 0.6123
+    expect(parent?.amount).toBe(-606);
     expect(
       children.reduce((total, child) => total + (child?.amount ?? 0), 0),
-    ).toBe(-612);
+    ).toBe(-606);
   });
 
   it('marks conversions without a rate as pending and fills them later', async () => {

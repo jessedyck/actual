@@ -84,7 +84,7 @@ export function handleGlobalEvents(store: AppStore, queryClient: QueryClient) {
       );
     }
 
-    // [fork:mc D-016] Undoing a budget currency change also restores the
+    // [fork:mc D-017] Undoing a default currency change also restores the
     // currency and number format prefs
     if (tables.includes('preferences')) {
       promises.push(store.dispatch(loadPrefs()));

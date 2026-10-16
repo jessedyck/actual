@@ -12,6 +12,8 @@ import { View } from '@actual-app/components/view';
 import * as monthUtils from '@actual-app/core/shared/months';
 import type { CategoryEntity } from '@actual-app/core/types/models';
 
+// [fork:mc D-017]
+import { McBudgetCurrency } from '#components/multi-currency/McBudgetCurrencies';
 import { useNavigate } from '#hooks/useNavigate';
 import { useSyncedPref } from '#hooks/useSyncedPref';
 import { collapseModals, pushModal } from '#modals/modalsSlice';
@@ -262,15 +264,18 @@ export function IncomeCategoryListItem({
         }}
       >
         <IncomeCategoryName category={category} onEdit={onEdit} />
-        <IncomeCategoryCells
-          key={`${category.id}`}
-          category={category}
-          month={month}
-          onBudgetAction={onBudgetAction}
-          onPress={
-            budgetType === 'envelope' ? onOpenBalanceMenu : onShowActivity
-          }
-        />
+        {/* [fork:mc D-017] Amounts in the budget's currency */}
+        <McBudgetCurrency categoryId={category.id} month={month}>
+          <IncomeCategoryCells
+            key={`${category.id}`}
+            category={category}
+            month={month}
+            onBudgetAction={onBudgetAction}
+            onPress={
+              budgetType === 'envelope' ? onOpenBalanceMenu : onShowActivity
+            }
+          />
+        </McBudgetCurrency>
       </View>
     </GridListItem>
   );

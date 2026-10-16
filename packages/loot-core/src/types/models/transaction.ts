@@ -16,6 +16,9 @@ export type TransactionEntity = {
   // [fork:mc D-002] Amount in the account's own currency, in that currency's
   // minor units. Null or missing when the account uses the budget currency.
   mc_amount?: number | null;
+  // [fork:mc D-017] Value in the currency of its category's budget for its
+  // month, when that isn't the default currency. Kept by the server.
+  mc_budget_amount?: number | null;
   payee?: PayeeEntity['id'] | null;
   notes?: string;
   date: string;

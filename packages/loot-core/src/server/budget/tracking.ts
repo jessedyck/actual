@@ -1,4 +1,10 @@
 import * as db from '#server/db';
+// [fork:mc D-017] Budgets in other currencies
+import {
+  carryDependencies,
+  convertByFactor,
+  groupInputCell,
+} from '#server/multi-currency/month-rates';
 import * as sheet from '#server/sheet';
 import { resolveName } from '#server/spreadsheet/util';
 // @ts-strict-ignore
@@ -27,21 +33,19 @@ export async function createCategory(cat, sheetName, prevSheetName) {
       `sum-amount-${cat.id}`,
       `${prevSheetName}!carryover-${cat.id}`,
       `${prevSheetName}!leftover-${cat.id}`,
+      // [fork:mc D-017] Converts last month's balance when the budget's
+      // currency changed
+      ...carryDependencies(cat.id),
     ],
-    run: (budgeted, sumAmount, prevCarryover, prevLeftover) => {
+    run: (budgeted, sumAmount, prevCarryover, prevLeftover, carry) => {
+      const carried = prevCarryover
+        ? convertByFactor(number(prevLeftover), carry)
+        : 0;
       if (cat.is_income) {
-        return safeNumber(
-          number(budgeted) -
-            number(sumAmount) +
-            (prevCarryover ? number(prevLeftover) : 0),
-        );
+        return safeNumber(number(budgeted) - number(sumAmount) + carried);
       }
 
-      return safeNumber(
-        number(budgeted) +
-          number(sumAmount) +
-          (prevCarryover ? number(prevLeftover) : 0),
-      );
+      return safeNumber(number(budgeted) + number(sumAmount) + carried);
     },
   });
   sheet.get().createDynamic(sheetName, `spent-with-carryover-${cat.id}`, {
@@ -69,21 +73,24 @@ export function createCategoryGroup(group, sheetName) {
     initialValue: 0,
     dependencies: group.categories
       .filter(cat => !cat.hidden)
-      .map(cat => `sum-amount-${cat.id}`),
+      // [fork:mc D-017] In the default currency
+      .map(cat => groupInputCell('sum-amount', cat.id)),
     run: sumAmounts,
   });
   sheet.get().createDynamic(sheetName, 'group-budget-' + group.id, {
     initialValue: 0,
     dependencies: group.categories
       .filter(cat => !cat.hidden)
-      .map(cat => `budget-${cat.id}`),
+      // [fork:mc D-017] In the default currency
+      .map(cat => groupInputCell('budget', cat.id)),
     run: sumAmounts,
   });
   sheet.get().createDynamic(sheetName, 'group-leftover-' + group.id, {
     initialValue: 0,
     dependencies: group.categories
       .filter(cat => !cat.hidden)
-      .map(cat => `leftover-${cat.id}`),
+      // [fork:mc D-017] In the default currency
+      .map(cat => groupInputCell('leftover', cat.id)),
     run: sumAmounts,
   });
 }
@@ -144,39 +151,33 @@ export function createSummary(groups, sheetName) {
 
 export function handleCategoryChange(months, oldValue, newValue) {
   function addDeps(sheetName, groupId, catId) {
-    sheet
-      .get()
-      .addDependencies(sheetName, `group-sum-amount-${groupId}`, [
-        `sum-amount-${catId}`,
-      ]);
-    sheet
-      .get()
-      .addDependencies(sheetName, `group-budget-${groupId}`, [
-        `budget-${catId}`,
-      ]);
-    sheet
-      .get()
-      .addDependencies(sheetName, `group-leftover-${groupId}`, [
-        `leftover-${catId}`,
-      ]);
+    sheet.get().addDependencies(sheetName, `group-sum-amount-${groupId}`, [
+      // [fork:mc D-017]
+      groupInputCell('sum-amount', catId),
+    ]);
+    sheet.get().addDependencies(sheetName, `group-budget-${groupId}`, [
+      // [fork:mc D-017]
+      groupInputCell('budget', catId),
+    ]);
+    sheet.get().addDependencies(sheetName, `group-leftover-${groupId}`, [
+      // [fork:mc D-017]
+      groupInputCell('leftover', catId),
+    ]);
   }
 
   function removeDeps(sheetName, groupId, catId) {
-    sheet
-      .get()
-      .removeDependencies(sheetName, `group-sum-amount-${groupId}`, [
-        `sum-amount-${catId}`,
-      ]);
-    sheet
-      .get()
-      .removeDependencies(sheetName, `group-budget-${groupId}`, [
-        `budget-${catId}`,
-      ]);
-    sheet
-      .get()
-      .removeDependencies(sheetName, `group-leftover-${groupId}`, [
-        `leftover-${catId}`,
-      ]);
+    sheet.get().removeDependencies(sheetName, `group-sum-amount-${groupId}`, [
+      // [fork:mc D-017]
+      groupInputCell('sum-amount', catId),
+    ]);
+    sheet.get().removeDependencies(sheetName, `group-budget-${groupId}`, [
+      // [fork:mc D-017]
+      groupInputCell('budget', catId),
+    ]);
+    sheet.get().removeDependencies(sheetName, `group-leftover-${groupId}`, [
+      // [fork:mc D-017]
+      groupInputCell('leftover', catId),
+    ]);
   }
 
   if (oldValue && oldValue.tombstone === 0 && newValue.tombstone === 1) {

@@ -1,7 +1,7 @@
-// [fork:mc D-016] Moves the budget and its history to another currency.
-// Shows which currency each account holds afterwards before anything
-// changes: its own currency, the docs' `#currency:XXX` note or "(XXX)" name,
-// or the currency of the workaround notes on its transactions.
+// [fork:mc D-017] Changes the default currency: the one budgets and accounts
+// without a currency of their own use, and To Budget and totals are in.
+// Budgets without one can keep the old currency up to this month, and
+// accounts without one can keep it as their own.
 import { useRef, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 
@@ -15,9 +15,9 @@ import { theme } from '@actual-app/components/theme';
 import { View } from '@actual-app/components/view';
 import { send } from '@actual-app/core/platform/client/connection';
 import type {
-  SwitchPreview,
-  SwitchResult,
-} from '@actual-app/core/server/multi-currency/switch';
+  DefaultCurrencyResult,
+  DefaultCurrencyPreview as Preview,
+} from '@actual-app/core/server/multi-currency/default-currency';
 import { currencies } from '@actual-app/core/shared/currencies';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -34,47 +34,40 @@ import { loadPrefs } from '#prefs/prefsSlice';
 import { useDispatch } from '#redux';
 import { mcErrorMessage } from '#util/mcErrorMessage';
 
-import { SwitchCurrencyDone } from './SwitchCurrencyDone';
-import { SwitchCurrencyPreview } from './SwitchCurrencyPreview';
+import { DefaultCurrencyDone } from './DefaultCurrencyDone';
+import {
+  DefaultCurrencyPreview,
+  FOLLOW_DEFAULT,
+  suggestedChoices,
+} from './DefaultCurrencyPreview';
 
-export function SwitchCurrencyModal() {
+export function DefaultCurrencyModal() {
   const { t } = useTranslation();
   const dispatch = useDispatch();
   const queryClient = useQueryClient();
-  const { budgetCurrency } = useMultiCurrency();
+  const { budgetCurrency: defaultCurrency } = useMultiCurrency();
   const [toCurrency, setToCurrency] = useState('');
-  const [preview, setPreview] = useState<SwitchPreview | null>(null);
-  const [accountCurrencies, setAccountCurrencies] = useState<
-    Record<string, string>
-  >({});
+  const [preview, setPreview] = useState<Preview | null>(null);
+  const [keepBudgets, setKeepBudgets] = useState(true);
+  const [accountChoices, setAccountChoices] = useState<Record<string, string>>(
+    {},
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [hasBackup, setHasBackup] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
-  const [result, setResult] = useState<SwitchResult | null>(null);
+  const [result, setResult] = useState<DefaultCurrencyResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const latestRequest = useRef(0);
 
   const currencyOptions: Array<[string, string]> = [
     ['', t('Choose a currency')],
     ...currencies
-      .filter(item => item.code !== '' && item.code !== budgetCurrency)
+      .filter(item => item.code !== '' && item.code !== defaultCurrency)
       .map((item): [string, string] => [
         item.code,
         `${item.code} - ${item.name}`,
       ]),
   ];
-  const accountOptions = (newBudgetCurrency: string): Array<[string, string]> =>
-    currencies
-      .filter(item => item.code !== '')
-      .map(item => [
-        item.code,
-        item.code === newBudgetCurrency
-          ? t('{{code}} - {{name}} (new budget currency)', {
-              code: item.code,
-              name: item.name,
-            })
-          : `${item.code} - ${item.name}`,
-      ]);
 
   async function onChooseCurrency(code: string) {
     const request = ++latestRequest.current;
@@ -88,7 +81,7 @@ export function SwitchCurrencyModal() {
     try {
       // Errors are shown here, not as the app's generic error notification
       const response = await send(
-        'mc-switch-preview',
+        'mc-default-currency-preview',
         { toCurrency: code },
         { catchErrors: true },
       );
@@ -98,13 +91,8 @@ export function SwitchCurrencyModal() {
       if (response.error) {
         setError(mcErrorMessage(response.error));
       } else {
-        const data = response.data;
-        setPreview(data);
-        setAccountCurrencies(
-          Object.fromEntries(
-            data.accounts.map(account => [account.id, account.suggested]),
-          ),
-        );
+        setPreview(response.data);
+        setAccountChoices(suggestedChoices(response.data));
       }
     } finally {
       if (request === latestRequest.current) {
@@ -120,9 +108,15 @@ export function SwitchCurrencyModal() {
     setIsApplying(true);
     setError(null);
     try {
+      // An account left out follows the new default with the same numbers
+      const accountCurrencies = Object.fromEntries(
+        Object.entries(accountChoices).filter(
+          ([, code]) => code !== FOLLOW_DEFAULT,
+        ),
+      );
       const response = await send(
-        'mc-switch-apply',
-        { toCurrency: preview.toCurrency, accountCurrencies },
+        'mc-default-currency-set',
+        { toCurrency: preview.toCurrency, accountCurrencies, keepBudgets },
         { catchErrors: true },
       );
       if (response.error) {
@@ -138,13 +132,16 @@ export function SwitchCurrencyModal() {
   }
 
   return (
-    <Modal name="mc-switch-currency" containerProps={{ style: { width: 720 } }}>
+    <Modal
+      name="mc-default-currency"
+      containerProps={{ style: { width: 720 } }}
+    >
       {({ state }) => (
         <>
           <ModalHeader
             title={
               <ModalTitle
-                title={t('Change budget currency')}
+                title={t('Change default currency')}
                 shrinkOnOverflow
               />
             }
@@ -152,7 +149,11 @@ export function SwitchCurrencyModal() {
           />
           {result && preview ? (
             <View style={{ gap: 15 }}>
-              <SwitchCurrencyDone result={result} preview={preview} />
+              <DefaultCurrencyDone
+                result={result}
+                preview={preview}
+                keptBudgets={keepBudgets}
+              />
               <ModalButtons>
                 <Button variant="primary" onPress={() => state.close()}>
                   <Trans>Close</Trans>
@@ -163,15 +164,16 @@ export function SwitchCurrencyModal() {
             <View style={{ gap: 15 }}>
               <Paragraph style={{ margin: 0 }}>
                 <Trans>
-                  Your budget is in {{ budgetCurrency }}. Choose its new
-                  currency: the whole history moves with it. Each transaction is
-                  converted at its own date's exchange rate and each month's
-                  budget at that month's average rate.
+                  The default currency of this budget file is{' '}
+                  {{ defaultCurrency }}. Budgets and accounts without a currency
+                  of their own use it, and To Budget and totals are in it.
+                  Changing it leaves budgets, accounts and transactions with a
+                  currency of their own as they are.
                 </Trans>
               </Paragraph>
 
               <InlineField
-                label={t('New currency')}
+                label={t('New default')}
                 labelWidth={110}
                 width="100%"
               >
@@ -185,39 +187,36 @@ export function SwitchCurrencyModal() {
 
               {isLoading && (
                 <Text style={{ color: theme.pageTextSubdued }}>
-                  <Trans>Looking at your accounts and rules…</Trans>
+                  <Trans>Looking at your budgets, accounts and rules…</Trans>
                 </Text>
               )}
 
               {preview && (
-                <SwitchCurrencyPreview
+                <DefaultCurrencyPreview
                   preview={preview}
-                  accountCurrencies={accountCurrencies}
-                  accountOptions={accountOptions(preview.toCurrency)}
+                  keepBudgets={keepBudgets}
+                  accountChoices={accountChoices}
                   isDisabled={isApplying}
-                  onChangeAccount={(id, code) =>
-                    setAccountCurrencies(current => ({
-                      ...current,
-                      [id]: code,
-                    }))
-                  }
+                  onChangeKeepBudgets={setKeepBudgets}
+                  onChangeAccountChoices={setAccountChoices}
                 />
               )}
 
               {preview && (
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <Checkbox
-                    id="mc-switch-backup"
+                    id="mc-default-backup"
                     checked={hasBackup}
                     disabled={isApplying}
                     onChange={event => setHasBackup(event.target.checked)}
                   />
                   <label
-                    htmlFor="mc-switch-backup"
+                    htmlFor="mc-default-backup"
                     style={{ userSelect: 'none' }}
                   >
                     <Trans>
-                      I have a backup of this budget (Settings → Export data)
+                      I have a backup of this budget file (Settings → Export
+                      data)
                     </Trans>
                   </label>
                 </View>
@@ -241,7 +240,7 @@ export function SwitchCurrencyModal() {
                       Change to {{ toCurrency: preview.toCurrency }}
                     </Trans>
                   ) : (
-                    <Trans>Change currency</Trans>
+                    <Trans>Change default currency</Trans>
                   )}
                 </ButtonWithLoading>
               </ModalButtons>

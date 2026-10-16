@@ -14,12 +14,16 @@ import * as monthUtils from '#shared/months';
 import {
   convertMinorUnits,
   DEFAULT_RATES_URL,
+  getBudgetCurrencyAt,
   isCurrencyCode,
   makeRateId,
+  MC_PREF_CURRENCY_PERIODS,
   MC_PREF_RATES_ONLINE,
   MC_PREF_RATES_URL,
+  parseCurrencyPeriods,
   RATE_CARRY_FORWARD_DAYS,
 } from '#shared/multi-currency';
+import type { CurrencyPeriod } from '#shared/multi-currency';
 import type { McExchangeRateEntity } from '#types/models';
 
 import { fetchRates } from './frankfurter';
@@ -37,7 +41,13 @@ export type RateSettings = { online: boolean; url: string };
 
 export type MultiCurrencyContext = {
   enabled: boolean;
+  /** The default currency of the budget file */
   budgetCurrency: string;
+  /**
+   * [fork:mc D-017] Earlier default currencies kept for budgets without a
+   * currency of their own, oldest first
+   */
+  periods: CurrencyPeriod[];
 };
 
 const SQL_CHUNK_SIZE = 400;
@@ -58,15 +68,51 @@ async function getPref(id: string): Promise<string | undefined> {
 export async function getMultiCurrencyContext(): Promise<MultiCurrencyContext> {
   const rows = await db.all<Pick<db.DbPreference, 'id' | 'value'>>(
     `SELECT id, value FROM preferences
-      WHERE id IN ('flags.multiCurrency', 'defaultCurrencyCode')`,
+      WHERE id IN ('flags.multiCurrency', 'defaultCurrencyCode', ?)`,
+    [MC_PREF_CURRENCY_PERIODS],
   );
-  const prefs = new Map(rows.map(row => [row.id, row.value]));
+  return toMultiCurrencyContext(new Map(rows.map(row => [row.id, row.value])));
+}
+
+/** The same, read synchronously (for spreadsheet code). */
+export function getMultiCurrencyContextSync(): MultiCurrencyContext {
+  const rows = db.runQuery<Pick<db.DbPreference, 'id' | 'value'>>(
+    `SELECT id, value FROM preferences
+      WHERE id IN ('flags.multiCurrency', 'defaultCurrencyCode', ?)`,
+    [MC_PREF_CURRENCY_PERIODS],
+    true,
+  );
+  return toMultiCurrencyContext(new Map(rows.map(row => [row.id, row.value])));
+}
+
+function toMultiCurrencyContext(
+  prefs: Map<string, string | null | undefined>,
+): MultiCurrencyContext {
   const budgetCurrency = prefs.get('defaultCurrencyCode') || '';
+  const enabled =
+    prefs.get('flags.multiCurrency') === 'true' && budgetCurrency !== '';
   return {
-    enabled:
-      prefs.get('flags.multiCurrency') === 'true' && budgetCurrency !== '',
+    enabled,
     budgetCurrency,
+    periods: enabled
+      ? parseCurrencyPeriods(prefs.get(MC_PREF_CURRENCY_PERIODS))
+      : [],
   };
+}
+
+/**
+ * [fork:mc D-017] The currency of a month's budgets that have none of their
+ * own: the default currency as it was then.
+ */
+export function getDefaultCurrencyAt(
+  context: MultiCurrencyContext,
+  monthOrDate: string,
+): string {
+  return getBudgetCurrencyAt(
+    monthOrDate,
+    context.periods,
+    context.budgetCurrency,
+  );
 }
 
 export async function getRateSettings(): Promise<RateSettings> {

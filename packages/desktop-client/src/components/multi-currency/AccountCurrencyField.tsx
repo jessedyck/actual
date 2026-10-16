@@ -30,7 +30,7 @@ export function AccountCurrencyField({
     .map(item => [
       item.code,
       item.code === budgetCurrency
-        ? t('{{code}} - {{name}} (budget currency)', {
+        ? t('{{code}} - {{name}} (default currency)', {
             code: item.code,
             name: item.name,
           })

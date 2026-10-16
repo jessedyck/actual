@@ -18,6 +18,8 @@ import { css } from '@emotion/css';
 
 import { BalanceWithCarryover } from '#components/budget/BalanceWithCarryover';
 import { makeAmountGrey } from '#components/budget/util';
+// [fork:mc D-017]
+import { useBudgetCurrencyMenu } from '#components/multi-currency/McBudgetCurrencies';
 import { NotesButton } from '#components/NotesButton';
 import { CellValue, CellValueText } from '#components/spreadsheet/CellValue';
 import { Field, Row, SheetCell } from '#components/table';
@@ -257,6 +259,8 @@ export const ExpenseCategoryMonth = memo(function ExpenseCategoryMonth({
     });
 
   const showScheduleIndicator = schedule && scheduleStatus;
+  // [fork:mc D-017]
+  const currencyMenu = useBudgetCurrencyMenu(category.id, month);
 
   return (
     <View
@@ -387,6 +391,16 @@ export const ExpenseCategoryMonth = memo(function ExpenseCategoryMonth({
                       message: t(`Budget template applied.`),
                     });
                   }}
+                  // [fork:mc D-017]
+                  currencyLabel={currencyMenu?.currencyLabel}
+                  onSetCurrency={
+                    currencyMenu
+                      ? () => {
+                          setBudgetMenuOpen(false);
+                          currencyMenu.onSetCurrency();
+                        }
+                      : undefined
+                  }
                 />
               </Popover>
             </View>

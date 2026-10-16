@@ -248,9 +248,9 @@ export function ExperimentalFeatures() {
               isSubFeature
               note={
                 <Trans>
-                  From this personal fork, not official Actual. Accounts can use
-                  their own currency; amounts are converted to the budget
-                  currency.
+                  From this personal fork, not official Actual. Accounts and
+                  budgets can use their own currency; amounts are converted at
+                  each month's average rate.
                 </Trans>
               }
             >

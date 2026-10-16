@@ -15,6 +15,7 @@ exports[`Transfer > split transfers are retained on child transactions 1`] = `
     "is_child": 0,
     "is_parent": 0,
     "mc_amount": null,
+    "mc_budget_amount": null,
     "notes": null,
     "parent_id": null,
     "payee": "id3",
@@ -40,6 +41,7 @@ exports[`Transfer > split transfers are retained on child transactions 1`] = `
     "is_child": 0,
     "is_parent": 0,
     "mc_amount": null,
+    "mc_budget_amount": null,
     "notes": null,
     "parent_id": null,
     "payee": "id2",
@@ -68,17 +70,17 @@ exports[`Transfer > split transfers are retained on child transactions 2`] = `
 -     "is_parent": 0,
 +     "is_parent": 1,
       "mc_amount": null,
+      "mc_budget_amount": null,
       "notes": null,
       "parent_id": null,
-      "payee": "id3",
-      "payee_name": "","
+      "payee": "id3","
 `;
 
 exports[`Transfer > split transfers are retained on child transactions 3`] = `
 "- First value
 + Second value
 
-@@ -23,10 +23,60 @@
+@@ -24,10 +24,62 @@
       "starting_balance_flag": 0,
       "tombstone": 0,
       "transfer_id": "id6",
@@ -96,6 +98,7 @@ exports[`Transfer > split transfers are retained on child transactions 3`] = `
 +     "is_child": 1,
 +     "is_parent": 0,
 +     "mc_amount": null,
++     "mc_budget_amount": null,
 +     "notes": null,
 +     "parent_id": "id5",
 +     "payee": "id2",
@@ -121,6 +124,7 @@ exports[`Transfer > split transfers are retained on child transactions 3`] = `
 +     "is_child": 0,
 +     "is_parent": 0,
 +     "mc_amount": null,
++     "mc_budget_amount": null,
 +     "notes": null,
 +     "parent_id": null,
 +     "payee": "id2",
@@ -156,6 +160,7 @@ exports[`Transfer > transfers are properly de-categorized 1`] = `
     "is_child": 0,
     "is_parent": 0,
     "mc_amount": null,
+    "mc_budget_amount": null,
     "notes": null,
     "parent_id": null,
     "payee": "id5",
@@ -175,23 +180,26 @@ exports[`Transfer > transfers are properly de-categorized 2`] = `
 "- First value
 + Second value
 
-@@ -10,18 +10,43 @@
-      "imported_id": null,
+@@ -11,18 +11,44 @@
       "imported_payee": null,
       "is_child": 0,
       "is_parent": 0,
       "mc_amount": null,
+      "mc_budget_amount": null,
 -     "notes": null,
 +     "notes": "hi",
-+     "parent_id": null,
+      "parent_id": null,
+-     "payee": "id5",
+-     "payee_name": "Non-transfer",
 +     "payee": "id4",
 +     "payee_name": "",
-+     "raw_synced_data": null,
-+     "reconciled": 0,
-+     "schedule": null,
-+     "sort_order": 123456789,
-+     "starting_balance_flag": 0,
-+     "tombstone": 0,
+      "raw_synced_data": null,
+      "reconciled": 0,
+      "schedule": null,
+      "sort_order": 123456789,
+      "starting_balance_flag": 0,
+      "tombstone": 0,
+-     "transfer_id": null,
 +     "transfer_id": "id7",
 +   },
 +   Object {
@@ -207,19 +215,17 @@ exports[`Transfer > transfers are properly de-categorized 2`] = `
 +     "is_child": 0,
 +     "is_parent": 0,
 +     "mc_amount": null,
++     "mc_budget_amount": null,
 +     "notes": "hi",
-      "parent_id": null,
--     "payee": "id5",
--     "payee_name": "Non-transfer",
++     "parent_id": null,
 +     "payee": "id2",
 +     "payee_name": "",
-      "raw_synced_data": null,
-      "reconciled": 0,
-      "schedule": null,
-      "sort_order": 123456789,
-      "starting_balance_flag": 0,
-      "tombstone": 0,
--     "transfer_id": null,
++     "raw_synced_data": null,
++     "reconciled": 0,
++     "schedule": null,
++     "sort_order": 123456789,
++     "starting_balance_flag": 0,
++     "tombstone": 0,
 +     "transfer_id": "id6",
     },
   ]"
@@ -241,10 +247,10 @@ exports[`Transfer > transfers are properly de-categorized 3`] = `
       "error": null,
       "id": "id6",
       "imported_id": null,
-@@ -12,22 +12,22 @@
-      "is_child": 0,
+@@ -13,22 +13,22 @@
       "is_parent": 0,
       "mc_amount": null,
+      "mc_budget_amount": null,
       "notes": "hi",
       "parent_id": null,
 -     "payee": "id4",
@@ -283,6 +289,7 @@ exports[`Transfer > transfers are properly inserted/updated/deleted 1`] = `
     "is_child": 0,
     "is_parent": 0,
     "mc_amount": null,
+    "mc_budget_amount": null,
     "notes": null,
     "parent_id": null,
     "payee": "id5",
@@ -302,7 +309,7 @@ exports[`Transfer > transfers are properly inserted/updated/deleted 2`] = `
 "- First value
 + Second value
 
-@@ -22,6 +22,56 @@
+@@ -23,6 +23,58 @@
       "sort_order": 123456789,
       "starting_balance_flag": 0,
       "tombstone": 0,
@@ -321,6 +328,7 @@ exports[`Transfer > transfers are properly inserted/updated/deleted 2`] = `
 +     "is_child": 0,
 +     "is_parent": 0,
 +     "mc_amount": null,
++     "mc_budget_amount": null,
 +     "notes": null,
 +     "parent_id": null,
 +     "payee": "id3",
@@ -346,6 +354,7 @@ exports[`Transfer > transfers are properly inserted/updated/deleted 2`] = `
 +     "is_child": 0,
 +     "is_parent": 0,
 +     "mc_amount": null,
++     "mc_budget_amount": null,
 +     "notes": null,
 +     "parent_id": null,
 +     "payee": "id2",
@@ -365,7 +374,7 @@ exports[`Transfer > transfers are properly inserted/updated/deleted 3`] = `
 "- First value
 + Second value
 
-@@ -2,54 +2,54 @@
+@@ -2,56 +2,56 @@
     Object {
       "account": "one",
       "amount": 5000,
@@ -381,6 +390,7 @@ exports[`Transfer > transfers are properly inserted/updated/deleted 3`] = `
       "is_child": 0,
       "is_parent": 0,
       "mc_amount": null,
+      "mc_budget_amount": null,
 -     "notes": null,
 +     "notes": "This is a note",
       "parent_id": null,
@@ -411,6 +421,7 @@ exports[`Transfer > transfers are properly inserted/updated/deleted 3`] = `
       "is_child": 0,
       "is_parent": 0,
       "mc_amount": null,
+      "mc_budget_amount": null,
       "notes": null,
       "parent_id": null,
 -     "payee": "id3",
@@ -430,12 +441,12 @@ exports[`Transfer > transfers are properly inserted/updated/deleted 3`] = `
       "account": "two",
       "amount": -5000,
       "category": null,
-@@ -60,11 +60,11 @@
-      "imported_id": null,
+@@ -63,11 +63,11 @@
       "imported_payee": null,
       "is_child": 0,
       "is_parent": 0,
       "mc_amount": null,
+      "mc_budget_amount": null,
 -     "notes": null,
 +     "notes": "This is a note",
       "parent_id": null,
@@ -449,10 +460,10 @@ exports[`Transfer > transfers are properly inserted/updated/deleted 4`] = `
 "- First value
 + Second value
 
-@@ -12,11 +12,11 @@
-      "is_child": 0,
+@@ -13,11 +13,11 @@
       "is_parent": 0,
       "mc_amount": null,
+      "mc_budget_amount": null,
       "notes": "This is a note",
       "parent_id": null,
 -     "payee": "id3",
@@ -462,7 +473,7 @@ exports[`Transfer > transfers are properly inserted/updated/deleted 4`] = `
       "reconciled": 0,
       "schedule": null,
       "sort_order": 123456789,
-@@ -48,11 +48,11 @@
+@@ -50,11 +50,11 @@
       "starting_balance_flag": 0,
       "tombstone": 0,
       "transfer_id": null,
@@ -481,10 +492,10 @@ exports[`Transfer > transfers are properly inserted/updated/deleted 5`] = `
 "- First value
 + Second value
 
-@@ -12,19 +12,19 @@
-      "is_child": 0,
+@@ -13,19 +13,19 @@
       "is_parent": 0,
       "mc_amount": null,
+      "mc_budget_amount": null,
       "notes": "This is a note",
       "parent_id": null,
 -     "payee": "id4",
@@ -504,7 +515,7 @@ exports[`Transfer > transfers are properly inserted/updated/deleted 5`] = `
       "account": "one",
       "amount": 5000,
       "category": null,
-@@ -46,32 +46,7 @@
+@@ -48,33 +48,7 @@
       "schedule": null,
       "sort_order": 123456789,
       "starting_balance_flag": 0,
@@ -524,6 +535,7 @@ exports[`Transfer > transfers are properly inserted/updated/deleted 5`] = `
 -     "is_child": 0,
 -     "is_parent": 0,
 -     "mc_amount": null,
+-     "mc_budget_amount": null,
 -     "notes": "This is a note",
 -     "parent_id": null,
 -     "payee": "id2",
@@ -543,22 +555,23 @@ exports[`Transfer > transfers are properly inserted/updated/deleted 6`] = `
 "- First value
 + Second value
 
-@@ -12,19 +12,44 @@
-      "is_child": 0,
+@@ -13,19 +13,45 @@
       "is_parent": 0,
       "mc_amount": null,
+      "mc_budget_amount": null,
       "notes": "This is a note",
       "parent_id": null,
 -     "payee": "id9",
 -     "payee_name": "Not transferred anymore",
 +     "payee": "id3",
 +     "payee_name": "",
-+     "raw_synced_data": null,
-+     "reconciled": 0,
-+     "schedule": null,
-+     "sort_order": 123456789,
-+     "starting_balance_flag": 0,
-+     "tombstone": 0,
+      "raw_synced_data": null,
+      "reconciled": 0,
+      "schedule": null,
+      "sort_order": 123456789,
+      "starting_balance_flag": 0,
+      "tombstone": 0,
+-     "transfer_id": null,
 +     "transfer_id": "id10",
 +   },
 +   Object {
@@ -574,17 +587,17 @@ exports[`Transfer > transfers are properly inserted/updated/deleted 6`] = `
 +     "is_child": 0,
 +     "is_parent": 0,
 +     "mc_amount": null,
++     "mc_budget_amount": null,
 +     "notes": "This is a note",
 +     "parent_id": null,
 +     "payee": "id2",
 +     "payee_name": "",
-      "raw_synced_data": null,
-      "reconciled": 0,
-      "schedule": null,
-      "sort_order": 123456789,
-      "starting_balance_flag": 0,
-      "tombstone": 0,
--     "transfer_id": null,
++     "raw_synced_data": null,
++     "reconciled": 0,
++     "schedule": null,
++     "sort_order": 123456789,
++     "starting_balance_flag": 0,
++     "tombstone": 0,
 +     "transfer_id": "id7",
     },
     Object {
@@ -597,7 +610,7 @@ exports[`Transfer > transfers are properly inserted/updated/deleted 7`] = `
 "- First value
 + Second value
 
-@@ -2,60 +2,10 @@
+@@ -2,62 +2,10 @@
     Object {
       "account": "one",
       "amount": 5000,
@@ -611,6 +624,7 @@ exports[`Transfer > transfers are properly inserted/updated/deleted 7`] = `
 -     "is_child": 0,
 -     "is_parent": 0,
 -     "mc_amount": null,
+-     "mc_budget_amount": null,
 -     "notes": "This is a note",
 -     "parent_id": null,
 -     "payee": "id3",
@@ -636,6 +650,7 @@ exports[`Transfer > transfers are properly inserted/updated/deleted 7`] = `
 -     "is_child": 0,
 -     "is_parent": 0,
 -     "mc_amount": null,
+-     "mc_budget_amount": null,
 -     "notes": "This is a note",
 -     "parent_id": null,
 -     "payee": "id2",

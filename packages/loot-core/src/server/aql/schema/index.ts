@@ -57,6 +57,9 @@ export const schema = {
     // [fork:mc D-002] Amount in the account's own currency (minor units of
     // that currency). `amount` stays in the budget currency.
     mc_amount: f('integer'),
+    // [fork:mc D-017] Value in its budget's currency when that isn't the
+    // default currency
+    mc_budget_amount: f('integer'),
     // subtransactions is a special field added if the table has the
     // `splits: grouped` option
   },
@@ -195,6 +198,8 @@ export const schema = {
     carryover: f('integer'),
     goal: f('integer'),
     long_goal: f('integer'),
+    // [fork:mc D-017] The budget's currency; null means the default
+    mc_currency: f('string'),
   },
   zero_budgets: {
     id: f('id'),
@@ -204,6 +209,8 @@ export const schema = {
     carryover: f('integer'),
     goal: f('integer'),
     long_goal: f('integer'),
+    // [fork:mc D-017] The budget's currency; null means the default
+    mc_currency: f('string'),
   },
   dashboard_pages: {
     id: f('id'),

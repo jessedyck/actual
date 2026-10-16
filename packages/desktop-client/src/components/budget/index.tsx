@@ -21,6 +21,8 @@ import {
   useSaveCategoryMutation,
   useSortCategoriesMutation,
 } from '#budget';
+// [fork:mc D-017]
+import { McBudgetCurrenciesProvider } from '#components/multi-currency/McBudgetCurrencies';
 import { useCategories } from '#hooks/useCategories';
 import { useGlobalPref } from '#hooks/useGlobalPref';
 import { useLocalPref } from '#hooks/useLocalPref';
@@ -256,7 +258,10 @@ export function Budget() {
           overflow: 'hidden',
         }}
       >
-        <View style={{ flex: 1 }}>{table}</View>
+        {/* [fork:mc D-017] Each category's budget currency */}
+        <McBudgetCurrenciesProvider>
+          <View style={{ flex: 1 }}>{table}</View>
+        </McBudgetCurrenciesProvider>
       </View>
     </SheetNameProvider>
   );

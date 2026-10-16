@@ -72,9 +72,16 @@ export type Modal =
         accountId: AccountEntity['id'];
       };
     }
-  // [fork:mc D-016]
+  // [fork:mc D-017]
   | {
-      name: 'mc-switch-currency';
+      name: 'mc-default-currency';
+    }
+  | {
+      name: 'mc-budget-currency';
+      options: {
+        month: string;
+        categoryId: CategoryEntity['id'];
+      };
     }
   | {
       name: 'close-account';

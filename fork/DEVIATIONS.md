@@ -19,6 +19,7 @@ retire fork code as it does.
   - `fork/`
   - `.github/workflows/fork-docker.yml`
   - `packages/loot-core/migrations/1791961050603_mc_multi_currency.sql`
+  - `packages/loot-core/migrations/1792130000000_mc_budget_currency.sql`
   - `packages/loot-core/src/server/multi-currency/`
   - `packages/loot-core/src/shared/multi-currency.ts` (and its test)
   - `packages/loot-core/src/types/models/mc-exchange-rate.ts`
@@ -44,13 +45,16 @@ retire fork code as it does.
 
 ## Core decision: what `amount` means
 
-`transactions.amount` keeps its upstream meaning: the value in the **budget
-currency**. Budgets, balances, transfers and reports keep working unchanged
-and older or official clients still see correct numbers. A foreign-currency
-account additionally stores `mc_amount`, the amount in the account's own
-currency (in that currency's minor units). Upstream may choose the opposite
-(make `amount` the account currency); if so, reconciling needs a data
-migration, described under D-002.
+`transactions.amount` keeps its upstream meaning: the value in the
+**default currency** (upstream's single budget currency,
+`defaultCurrencyCode`). Balances, transfers, To Budget and reports keep
+working unchanged and older or official clients still see correct numbers. A
+foreign-currency account additionally stores `mc_amount`, the amount in the
+account's own currency (in that currency's minor units). A category's budget
+for a month can have a currency of its own (D-017); a transaction counted in
+such a budget also stores `mc_budget_amount`, its value in that currency.
+Upstream may choose the opposite (make `amount` the account currency); if
+so, reconciling needs a data migration, described under D-002.
 
 ## Deviation register
 
@@ -62,7 +66,7 @@ migration, described under D-002.
 | D-004 | Exchange rates: synced cache, Frankfurter, manual rates       | `loot-core/src/types/prefs.ts` (pref keys)                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Done                                                       |
 | D-005 | Server handlers, account currency on creation, backfill       | `loot-core/src/server/main.ts`, `loot-core/src/types/handlers.ts`, `loot-core/src/server/accounts/app.ts`                                                                                                                                                                                                                                                                                                                                                                                   | Done                                                       |
 | D-006 | Keep `amount` and `mc_amount` consistent on every write       | `loot-core/src/server/transactions/index.ts`                                                                                                                                                                                                                                                                                                                                                                                                                                                | Done                                                       |
-| D-007 | Settings: flag toggle, rate settings, budget-currency lock    | `desktop-client/src/components/settings/{Experimental,index,Currency}.tsx`                                                                                                                                                                                                                                                                                                                                                                                                                  | Done                                                       |
+| D-007 | Settings: flag toggle, rate settings, default-currency lock   | `desktop-client/src/components/settings/{Experimental,index,Currency}.tsx`                                                                                                                                                                                                                                                                                                                                                                                                                  | Done                                                       |
 | D-008 | Reconcile and imports in the account currency                 | `desktop-client/src/components/accounts/{Header,Account}.tsx`, `desktop-client/src/components/modals/{AccountReconcileModal,ImportTransactionsModal/ImportTransactionsModal}.tsx`, `desktop-client/src/components/mobile/accounts/{AccountTransactions,ReconcilingBanner}.tsx`, `loot-core/src/server/accounts/sync.ts`                                                                                                                                                                     | Done                                                       |
 | D-009 | Docker image built from this branch                           | none (fork-owned workflow)                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Done                                                       |
 | D-010 | Fork docs and notices                                         | `README.md` (notice at the top)                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Done                                                       |
@@ -71,12 +75,13 @@ migration, described under D-002.
 | D-013 | Register: amounts in the account's currency                   | `desktop-client/src/components/transactions/{TransactionList,TransactionsTable}.tsx`, `desktop-client/src/components/accounts/Account.tsx`, `desktop-client/src/components/mobile/{accounts/AccountTransactions,transactions/TransactionEdit}.tsx`                                                                                                                                                                                                                                          | Done                                                       |
 | D-014 | Exchange rate adjustment                                      | none (fork-owned)                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Done (desktop)                                             |
 | D-015 | Reports in a display currency                                 | `loot-core/src/types/prefs.ts` (pref key), `desktop-client/src/hooks/useFormat.ts`, `desktop-client/src/components/reports/spreadsheets/{net-worth-spreadsheet,custom-spreadsheet,grouped-spreadsheet,fetchSpreadsheetQueryData,spending-spreadsheet}.ts`, `desktop-client/src/components/reports/spreadsheets/cash-flow-spreadsheet.tsx`, `desktop-client/src/components/reports/reports/{NetWorth,NetWorthCard,CashFlow,CashFlowCard,CustomReport,GetCardData,Spending,SpendingCard}.tsx` | Done for net worth, cash flow, custom and spending reports |
-| D-016 | Changing the budget currency, history included                | `desktop-client/src/components/settings/Currency.tsx` (hint), `desktop-client/src/global-events.ts` (prefs on undo), `desktop-client/src/modals/modalsSlice.ts`, `desktop-client/src/components/Modals.tsx`                                                                                                                                                                                                                                                                                 | Done                                                       |
+| D-016 | Changing the budget currency (replaced by D-017)              | (see D-017)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Retired                                                    |
+| D-017 | A currency on each budget; changing the default currency      | `loot-core/src/server/budget/*`, budget page and budget menus (desktop and mobile), `settings/Currency.tsx`, `global-events.ts`, modal registry, schema, 4 snapshot files (full list under D-017)                                                                                                                                                                                                                                                                                           | Done                                                       |
 
 ### D-001: `multiCurrency` flag
 
 Adds `'multiCurrency'` to `FeatureFlag` and its default (`false`). The
-feature only activates with the flag on **and** a budget currency set through
+feature only activates with the flag on **and** a default currency set through
 upstream's experimental _Currency support_ (`defaultCurrencyCode`).
 
 _Reconcile:_ when upstream ships per-account currencies, remove the flag and
@@ -86,16 +91,21 @@ its checks; the stored data stays valid.
 
 Migration `1791961050603_mc_multi_currency.sql`:
 
-- `accounts.mc_currency` TEXT: ISO 4217 code, NULL = budget currency.
+- `accounts.mc_currency` TEXT: ISO 4217 code, NULL = default currency.
 - `transactions.mc_amount` INTEGER: amount in the account currency, in its
-  minor units (JPY has none, KWD has three). NULL for budget-currency
+  minor units (JPY has none, KWD has three). NULL for default-currency
   accounts.
 - `mc_exchange_rates` (synced): `id` = `YYYYMMDD:BASE:QUOTE`, `date`, `base`,
   `quote`, `rate` (1 base = rate quote), `source` (`frankfurter` | `manual`).
 
+Migration `1792130000000_mc_budget_currency.sql` adds the budget currency
+columns of D-017: `zero_budgets.mc_currency`, `reflect_budgets.mc_currency`
+and `transactions.mc_budget_amount`.
+
 Exposed with the same names in the AQL schema and TypeScript types. Adding a
 column changes `SELECT *` results, so these snapshot files were regenerated
-(the only change is `"mc_amount": null` and shifted diff offsets):
+(the only change is `"mc_amount": null` and `"mc_budget_amount": null`
+lines, and shifted diff offsets):
 `server/__snapshots__/main.test.ts.snap`,
 `server/accounts/__snapshots__/sync.test.ts.snap`,
 `server/transactions/__snapshots__/transfer.test.ts.snap`,
@@ -121,6 +131,10 @@ synced table (reusing a rate up to 7 days old, for weekends) → Frankfurter v2
 (`/v2/rates`) when online rates are on → nothing (conversion stays pending).
 Future dates use today's rate. Bulk work fetches one date range per currency.
 A downloaded rate never replaces a manual one. Rates are stored outside undo.
+
+Transactions and budgets convert at a **month rate**, the average of the
+month's daily rates (D-017); daily rates remain the source, and reports
+(D-015) still pick their own dates.
 
 Synced preferences: `mcRatesOnline` (`'false'` disables downloads; default
 on) and `mcRatesUrl` (default `https://api.frankfurter.dev/v2`; Frankfurter
@@ -154,13 +168,17 @@ amount at each transaction's date. Notes are left untouched.
   `amount` (older clients, API, transfer mirrors) gets `mc_amount` derived.
 - Editing `mc_amount` re-derives `amount`; editing `amount` alone is kept as
   a manual override (the real bank conversion).
-- In a transfer with a budget-currency side, that side's amount is
+- In a transfer with a default-currency side, that side's amount is
   authoritative and the foreign side mirrors it; between two foreign
   accounts the sending side derives and the receiving side mirrors. A
   receiving side's `mc_amount` is only filled when empty, never overwritten.
 - Moving to an account in another currency re-derives `mc_amount`; moving to
-  a budget-currency account clears it.
-- No rate: `amount` is 0 until `mc-recompute-pending` finds one.
+  a default-currency account clears it.
+- Amounts convert at the month's average rate (D-017), not the day's.
+- A transaction counted in a budget with its own currency gets
+  `mc_budget_amount`, its value in that currency (D-017).
+- No rate: `amount` (or `mc_budget_amount`) is 0 until
+  `mc-recompute-pending` finds one.
 - Split children are rounded to add up exactly to the parent.
 
 Writes that bypass `batchUpdateTransactions` get no account amount until
@@ -181,16 +199,17 @@ _Reconcile:_ remove both call sites once upstream converts amounts itself.
   is on, and no longer clears `defaultCurrencyCode` when Currency support is
   off while multi-currency is on (`settings/index.tsx`; upstream clears it
   whenever the currency flag is off).
-- The default-currency picker is disabled while any account has
-  `mc_currency` (`settings/Currency.tsx`): existing budget amounts would
-  otherwise be read in the wrong currency. Its description points to
-  _Change budget currency_ (D-016).
+- The default-currency picker is disabled while any account or budget has a
+  currency of its own, or months keep an earlier default
+  (`settings/Currency.tsx`): existing amounts would otherwise be read in the
+  wrong currency. Its description points to _Change default currency_
+  (D-017).
 - Fork-owned rows in `components/multi-currency/`: automatic downloads
   (`mcRatesOnline`), service URL (`mcRatesUrl`), budget values waiting for a
   rate (`mc-recompute-pending`), and the stored rates with manual entry and
   deletion. Saving a manual rate also fills in pending budget values. The
-  group's description says that an account keeps one currency and the
-  budget counts its transactions in the budget currency.
+  group's description says that an account keeps one currency and each
+  month's budgets count its transactions in their own currency.
 
 _Reconcile:_ remove the nesting and both guards with the flag. If upstream
 adds rate settings, move `mcRatesOnline` / `mcRatesUrl` into them.
@@ -274,13 +293,13 @@ account's currency too, so imports into converted accounts keep working.
   currency, and _In budget_ (the sum of `amount`). An info button (fork
   `McBalancesHelp`) explains the three with the account's own numbers and
   why _Worth today_ and _In budget_ differ. Group totals (On budget,
-  Off budget, All accounts) stay budget-currency sums of `amount`. The
+  Off budget, All accounts) stay default-currency sums of `amount`. The
   mobile account page (`mobile/transactions/TransactionListWithBalances.tsx`,
   new prop `mcAccount`) shows balance, cleared and uncleared the same way.
 - **Server**: `accounts-get` (`server/accounts/app.ts`) maps account rows
   field by field; it now includes `mc_currency`.
 
-Not yet: selected balances show budget-currency sums.
+Not yet: selected balances show default-currency sums.
 
 _Reconcile:_ swap `McCellValue` / `McAccountBalances` back to upstream's
 components once upstream formats balances per account currency; keep the
@@ -319,7 +338,7 @@ amounts at the register's boundary instead of changing that logic:
   converts row by row (`toAccountCurrencyViews`,
   `diffFromAccountCurrencyViews`), and the Payment, Deposit and running
   balance cells add the symbol (fork hook `useMcAmountCellFormatter`; the
-  running balance stays in the budget currency). `useAmountColumnWidths`
+  running balance stays in the default currency). `useAmountColumnWidths`
   takes a new optional `symbolChars` so the columns fit the symbols.
 
 Mobile:
@@ -367,22 +386,22 @@ both amounts as given because `mc_amount` is set.
 
 Not yet: mobile.
 
-_Reconcile:_ keep as long as upstream stores budget-currency amounts per
+_Reconcile:_ keep as long as upstream stores default-currency amounts per
 transaction; drop it if upstream values foreign accounts at current rates
 itself.
 
 ### D-015: Reports in a display currency
 
 - **Choice**: synced preference `mcReportCurrency` (key added in
-  `types/prefs.ts`; empty means the budget currency), picked with the fork's
+  `types/prefs.ts`; empty means the default currency), picked with the fork's
   `McReportCurrencySelect` in a supported report's header and shared by all
   supported reports and dashboard cards. It only takes effect while a rate
-  from the budget currency exists (checked with today's rate); otherwise the
-  report stays in the budget currency and the picker says "No rate".
+  from the default currency exists (checked with today's rate); otherwise the
+  report stays in the default currency and the picker says "No rate".
 - **Formatting**: `hooks/useFormat.ts` reads the fork context
   `McDisplayCurrencyContext`, so amounts inside a supported report are
   formatted in its currency (symbol and decimals). `McReportCurrencyProvider`
-  wraps only supported reports, so the others keep the budget currency.
+  wraps only supported reports, so the others keep the default currency.
 - **Rates**: server handler `mc-rates-at` (`getRatesAt` in
   `server/multi-currency/rates.ts`) returns rates for a list of dates. It
   fetches missing ones once as a range, then each date takes the newest rate
@@ -394,8 +413,8 @@ itself.
   period's end (fork `reports/mcReportValuation.ts`). The report therefore
   shows what the accounts were worth, exchange rate gains and losses
   included, rather than the rates their transactions were recorded at; this
-  applies in the budget currency too. Every balance is then converted into
-  the display currency, through the budget currency, at the same date.
+  applies in the default currency too. Every balance is then converted into
+  the display currency, through the default currency, at the same date.
   Internal transfer legs are moved in the units their account is summed in.
   An account in a currency with no rate at all keeps its budget amounts.
 - **Cash flow** (`spreadsheets/cash-flow-spreadsheet.tsx`, new optional last
@@ -406,7 +425,7 @@ itself.
   from the converted opening balance and adds the converted flows. The card's
   totals are grouped and converted the same way (`simpleCashFlow`'s query
   was split into `makeBaseQuery` for that), so card and page agree. In the
-  budget currency nothing changes: flows already carry the rates their
+  default currency nothing changes: flows already carry the rates their
   transactions were recorded at.
 
 - **Custom reports** (page `reports/CustomReport.tsx`, dashboard cards
@@ -422,7 +441,7 @@ itself.
   average rate.
 
 Not yet: the other reports (summary, budget analysis, calendar, Sankey,
-crossover, age of money, forecasts) stay in the budget currency. Long
+crossover, age of money, forecasts) stay in the default currency. Long
 amounts in another currency's format can be cut off on chart axes and in
 narrow table columns, as they are upstream for budgets in such a
 currency.
@@ -431,56 +450,136 @@ _Reconcile:_ drop the provider, the picker and the preference once upstream
 reports offer a currency; keep valuing foreign accounts in the net worth
 spreadsheet until upstream does it.
 
-### D-016: Changing the budget currency
+### D-016: Changing the budget currency (retired)
 
-_Settings → Multi-currency accounts → Change budget currency_ (fork
-`SwitchCurrencySetting` and `SwitchCurrencyModal`; server
-`server/multi-currency/switch.ts`, handlers `mc-switch-preview` and
-`mc-switch-apply`) moves a budget to another currency, for example CAD to
-EUR, and keeps its history.
+Replaced by D-017. The first version moved the whole history to the new
+currency; budgets now keep their own currency instead, and changing the
+default currency only touches what has none. `switch.ts` became
+`default-currency.ts`, the `mc-switch-*` handlers and `Switch*` components
+are gone, and the markers now say D-017.
 
-- **Preview**: the currency each account holds afterwards, suggested from
-  its own currency, the docs' `#currency:XXX` account note or "(XXX)" name
-  suffix, or the currency of workaround notes on at least half of its
-  transactions; each can be changed. It also shows today's rate and counts
-  transactions, budget months, rules with amounts and workaround rules.
-- **Transactions** keep their value in their account's new currency
-  (`mc_amount`, or `amount` when that is the new budget currency) and get a
-  new `amount` at their own date's rate. An account that changes currency
-  reads amounts from workaround notes ("-52.43 EUR (FX rate: …)"),
-  otherwise converts at the day's rate. Split children share the parent's
-  value in proportion (one by one when they net to zero), and a parent's
-  budget amount is the sum of its children's. Transfers mirror each other:
-  the side in the new budget currency decides, then a side read from a
-  note, then the paying side.
-- **Budgets** (`zero_budgets`, `reflect_budgets`): the part a category used
-  (spent, or received for income categories) takes the rate of those
-  transactions, the rest the month's average of daily rates (today's rate
-  for future months), so a bill budgeted and paid exactly stays exactly
-  paid. Goals and held money (`zero_budget_months.buffered`) at the month's
-  average; `long_goal` and `carryover` are flags and stay as they are.
-- **Rules and schedules**: amounts in conditions and in fixed `set amount` /
-  `set-split-amount` actions at today's rate. Rules written for the docs
-  workaround (a templated `set notes` containing "FX rate:" plus a templated
-  `set amount`) are deleted, since they would convert amounts again.
-- **Preferences**: `defaultCurrencyCode`, plus the number format, decimals
-  and symbol position of the new currency, as upstream's currency picker
-  sets them. `mcReportCurrency` is cleared when it equals the new currency.
-- Refusals (no rate, invalid currency) are thrown as `APIError`s and shown
-  in the dialog. Fork components read error messages with
-  `util/mcErrorMessage.ts`, since `send` rejects with a plain object.
-- Everything is written in one `batchMessages` and can be undone.
-  `global-events.ts` now reloads preferences when an undo touches them;
-  upstream leaves them stale in Redux, which would keep showing the old
-  currency.
+### D-017: A currency on each budget
 
-Not converted: budget templates, saved filters, and custom report or
-dashboard filters. Rates differ from day to day, so the amount to budget
-and partly spent categories can end up a little off; the result says so.
+The default currency (`defaultCurrencyCode`, upstream's single budget
+currency) stays the currency of `transactions.amount`, To Budget, group and
+account totals. Each category's budget in each month can have a currency of
+its own, so a budget file can move from CAD to EUR one budget at a time.
 
-_Reconcile:_ drop it if upstream ships its own way to change a budget's
-currency; otherwise keep it and adapt it to upstream's amount model
-(D-002).
+Upstream files touched: `loot-core/src/server/budget/{base,envelope,
+tracking,actions}.ts`, `loot-core/src/server/aql/schema/index.ts`,
+`loot-core/src/server/db/types/index.ts`,
+`loot-core/src/types/{prefs.ts,models/transaction.ts}`, the 4 snapshot files
+of D-002, `desktop-client/src/components/budget/{index,ExpenseCategory,
+IncomeCategory}.tsx`, `budget/{envelope,tracking}/{BudgetMenu,
+*BudgetComponents,budgetsummary/BudgetSummary}.tsx`,
+`mobile/budget/{BudgetPage,BudgetTable,ExpenseCategoryListItem,
+IncomeCategoryListItem}.tsx`, `modals/{Envelope,Tracking}BudgetMenuModal.tsx`,
+`settings/Currency.tsx`, `desktop-client/src/global-events.ts`,
+`desktop-client/src/modals/modalsSlice.ts` and `components/Modals.tsx`.
+
+- **Data** (migration `1792130000000_mc_budget_currency.sql`, D-002):
+  - `zero_budgets.mc_currency` / `reflect_budgets.mc_currency`: the budget's
+    own currency. NULL: the default currency, or the one budgets without a
+    currency kept for that month (`mcCurrencyPeriods`, below).
+  - `transactions.mc_budget_amount`: the transaction's value in its budget's
+    currency when that isn't the default one; NULL without a category, in an
+    off-budget account, for a split parent, or for a budget in the default
+    currency. 0 while no rate is known (counted by `mc-recompute-pending`,
+    except an exchange rate adjustment, which is 0 in its account's
+    currency).
+  - Synced preferences (`types/prefs.ts`): `mcMonthRates`, JSON
+    `{"YYYY-MM:BASE:QUOTE": {rate, manual?, final?}}`; `mcCurrencyPeriods`,
+    JSON `[{currency, until: "YYYY-MM"}]`, the currency budgets without one
+    keep up to a month after a change of default currency.
+- **Month rates** (`server/multi-currency/month-rates.ts`): every conversion
+  uses one rate per month and currency pair, the average of the month's
+  stored daily rates up to today. A month without rates yet (a future one)
+  takes the latest rate before it. A month is final once it is over and its
+  last week has rates; until then `refreshMonthRates` (on load and when rates
+  arrive) recomputes it and reconverts the values computed with the old rate.
+  A value counts as computed when it equals its own amount converted at that
+  rate, so typed amounts are kept. A rate typed for a month
+  (`mc-month-rate-set`) wins over the average. D-005's backfill, D-006 and
+  imports (D-008) use month rates too.
+- **Budget engine** (`server/budget/{base,envelope,tracking}.ts`):
+  - `sum-amount-<category>` adds up `COALESCE(mc_budget_amount, amount)`, so
+    a budget counts spending in its own currency; transaction changes to
+    `mc_budget_amount` recompute it.
+  - Per category and month, static cells hold the budget currency's rate to
+    the default currency (`mc-todef-<id>`) and the rate from last month's
+    budget currency (`mc-carry-<id>`, applied to the carried balance).
+    `applyBudgetFactors` sets them from stored month rates;
+    `ensureBudgetFactorRates` computes missing rates first.
+  - Converted cells (`mc-d-sum-amount-<id>`, `mc-d-budget-<id>`,
+    `mc-d-leftover-<id>`) feed group totals, To Budget's income, last
+    month's overspending and the automatic hold (`groupInputCell`), which
+    therefore stay in the default currency.
+  - All of this is only built when multi-currency is on as the spreadsheet is
+    built (`setBudgetFactorCellsEnabled`); otherwise the cells are upstream's.
+    The multi-currency app service re-applies the rates when preferences,
+    budget currencies or categories change (also through sync).
+- **Budget actions** (`server/budget/actions.ts`): copying last month's
+  budget (all, one category, or until year end) copies currencies;
+  averages convert each month's spending into the budget's currency.
+- **Handlers** (`server/multi-currency/app.ts`): `mc-budget-set-currency`
+  (the budgeted amount and goal convert at the month's rate or keep their
+  numbers; the budget's `mc_budget_amount`s are recomputed),
+  `mc-month-rates`, `mc-month-rate-set`, `mc-month-rates-refresh`,
+  `mc-month-convert`, `mc-default-currency-preview`,
+  `mc-default-currency-set`. All changes are undoable.
+- **Budget page**:
+  - Desktop: the budget menu (`budget/{envelope,tracking}/BudgetMenu.tsx`,
+    from `*BudgetComponents.tsx`) gets _Currency: XXX…_, which opens the fork
+    `BudgetCurrencyModal` (`mc-budget-currency` in `modals/modalsSlice.ts`
+    and `components/Modals.tsx`). Category rows format their amounts in the
+    budget's currency (`McBudgetCurrency` in `budget/ExpenseCategory.tsx`
+    and `IncomeCategory.tsx`, read once per page by the provider in
+    `budget/index.tsx`). Under the month's name
+    (`budgetsummary/BudgetSummary.tsx`), `McMonthRates` shows the month's
+    rates; clicking one sets a rate for that month.
+  - Mobile: the same in `mobile/budget/{BudgetPage,BudgetTable,
+ExpenseCategoryListItem,IncomeCategoryListItem}.tsx`; the budget menus
+    (`modals/{Envelope,Tracking}BudgetMenuModal.tsx`) get the currency item
+    and name the currency next to _Budgeted_.
+- **Changing the default currency** (_Settings → Multi-currency accounts →
+  Default currency_; fork `DefaultCurrencySetting`, `DefaultCurrencyModal`;
+  server `default-currency.ts`). It only touches what has no currency of its
+  own:
+  - Budgets without one keep the old currency up to the current month
+    (appended to `mcCurrencyPeriods`; numbers and what they counted stay), or
+    follow the new default with the same numbers.
+  - Accounts without one keep the old currency as their own (same amounts),
+    get another (read from workaround notes, else converted at each month's
+    rate), or follow with the same numbers. The preview suggests a currency
+    from the docs' `#currency:XXX` account note, an "(XXX)" name suffix, or
+    workaround notes on at least half of the account's transactions.
+  - Every `amount` is worked out again in the new default at its month's
+    rate; transfers mirror (the side in the new default decides, then one
+    read from a note, then the paying side), split children add up to their
+    parent. Kept budgets keep counting what they counted. Money held for
+    next month (`zero_budget_months.buffered`) converts in kept months.
+  - Rules written for the docs workaround (a templated `set notes` with
+    "FX rate:" plus a templated `set amount`) are deleted when none of their
+    accounts stays in the old currency; rules whose accounts all change
+    currency convert their amounts at today's rate. The new currency's
+    number format and symbol position are set, as upstream's picker does;
+    `mcReportCurrency` is cleared when it equals the new default.
+  - Refusals (no rate, invalid currency) are `APIError`s shown in the dialog
+    (`util/mcErrorMessage.ts`). `global-events.ts` reloads preferences when
+    an undo touches them; upstream leaves them stale in Redux.
+
+Not yet: rules and schedules still compare and post default-currency
+amounts, so after changing the default currency, the amounts of a rule or
+schedule for an account kept in the old currency are read in the new one
+(next step: amounts in rules and schedules in the account's currency);
+budget templates and goals written in notes don't know about currencies; reports that show budgeted amounts (custom reports, spending,
+budget analysis) read them as default-currency amounts; on narrow phones a
+budget amount with a long symbol (CA$) can be cut off by a pixel, an
+upstream rounding issue in the cells' self-sizing text.
+
+_Reconcile:_ keep while upstream has one currency per budget file. If
+upstream adds per-budget currencies, copy `mc_currency` into its field and
+drop the factor cells.
 
 ### D-009: Docker image
 
@@ -502,7 +601,7 @@ a failing commit never replaces the published image.
 - `hooks/useMultiCurrencyFormat.ts`: formats and parses amounts in any
   currency with the user's number format, symbol position and spacing, using
   that currency's symbol and decimal places. Upstream's `useFormat` only
-  knows the budget currency.
+  knows the default currency.
 
 Both live in `src/hooks/` because desktop-client's `#components/*` import
 alias only resolves `.tsx` files; this avoids editing `package.json`.

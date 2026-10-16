@@ -21,6 +21,8 @@ import { AutoTextSize } from 'auto-text-size';
 
 import { MOBILE_NAV_HEIGHT } from '#components/mobile/MobileNavTabs';
 import { PullToRefresh } from '#components/mobile/PullToRefresh';
+// [fork:mc D-017]
+import { McMonthRates } from '#components/multi-currency/McMonthRates';
 import { PrivacyFilter } from '#components/PrivacyFilter';
 import { CellValue } from '#components/spreadsheet/CellValue';
 import { SchedulesProvider } from '#hooks/useCachedSchedules';
@@ -374,6 +376,16 @@ export function BudgetTable({
         showSpentColumn={showSpentColumn}
         toggleSpentColumn={toggleSpentColumn}
         onShowBudgetSummary={onShowBudgetSummary}
+      />
+      {/* [fork:mc D-017] The rates the month converts at */}
+      <McMonthRates
+        month={month}
+        style={{
+          marginTop: 0,
+          padding: '3px 10px',
+          backgroundColor: theme.pageBackground,
+          borderBottom: `1px solid ${theme.tableBorder}`,
+        }}
       />
       <PullToRefresh onRefresh={onRefresh}>
         <View

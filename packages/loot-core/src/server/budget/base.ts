@@ -1,5 +1,12 @@
 import { aqlQuery } from '#server/aql';
 import * as db from '#server/db';
+// [fork:mc D-017] Budgets in other currencies
+import {
+  applyBudgetFactors,
+  createBudgetFactorCells,
+  createConvertedBudgetCells,
+  setBudgetFactorCellsEnabled,
+} from '#server/multi-currency/month-rates';
 import * as sheet from '#server/sheet';
 import { resolveName } from '#server/spreadsheet/util';
 // @ts-strict-ignore
@@ -70,10 +77,12 @@ function getSumAmountsByMonth(
   rangeStart: number,
   rangeEnd: number,
 ): Map<string, number> {
+  // [fork:mc D-017] A budget in another currency than the default one sums
+  // the transactions' values in its currency
   const rows = db.runQuery<{ month: number; category: string; amount: number }>(
     `SELECT t.category AS category,
             t.date / 100 AS month,
-            SUM(t.amount) AS amount
+            SUM(COALESCE(t.mc_budget_amount, t.amount)) AS amount
        FROM v_transactions_internal_alive t
        LEFT JOIN accounts a ON a.id = t.account
       WHERE t.date >= ${rangeStart} AND t.date <= ${rangeEnd}
@@ -131,12 +140,15 @@ export async function reseedSumAmounts(months: string[]): Promise<string[]> {
 }
 
 export function createCategory(cat, sheetName, prevSheetName, start, end) {
+  // [fork:mc D-017]
+  createBudgetFactorCells(cat.id, sheetName);
   sheet.get().createDynamic(sheetName, 'sum-amount-' + cat.id, {
     initialValue: 0,
     run: () => {
       // Making this sync is faster!
+      // [fork:mc D-017] In the budget's currency (see getSumAmountsByMonth)
       const rows = db.runQuery<{ amount: number }>(
-        `SELECT SUM(amount) as amount FROM v_transactions_internal_alive t
+        `SELECT SUM(COALESCE(mc_budget_amount, amount)) as amount FROM v_transactions_internal_alive t
            LEFT JOIN accounts a ON a.id = t.account
          WHERE t.date >= ${start} AND t.date <= ${end}
            AND category = '${cat.id}' AND a.offbudget = 0`,
@@ -154,6 +166,10 @@ export function createCategory(cat, sheetName, prevSheetName, start, end) {
   } else {
     void trackingBudget.createCategory(cat, sheetName, prevSheetName);
   }
+  // [fork:mc D-017]
+  createConvertedBudgetCells(cat.id, sheetName, {
+    hasBudget: getBudgetType() !== 'envelope' || !cat.is_income,
+  });
 }
 
 function handleAccountChange(months, oldValue, newValue) {
@@ -184,6 +200,8 @@ function handleTransactionChange(transaction, changedFields) {
     (changedFields.has('date') ||
       changedFields.has('acct') ||
       changedFields.has('amount') ||
+      // [fork:mc D-017]
+      changedFields.has('mc_budget_amount') ||
       changedFields.has('category') ||
       changedFields.has('tombstone') ||
       changedFields.has('isParent')) &&
@@ -334,6 +352,8 @@ export async function createBudget(months) {
   sheet.startTransaction();
   const meta = sheet.get().meta();
   meta.createdMonths = meta.createdMonths || new Set();
+  // [fork:mc D-017]
+  setBudgetFactorCellsEnabled();
 
   const budgetType = getBudgetType();
 
@@ -404,6 +424,8 @@ export async function createBudget(months) {
 
   sheet.get().setMeta(meta);
   sheet.endTransaction();
+  // [fork:mc D-017] Conversion rates of the months just created
+  applyBudgetFactors(monthsToCreate);
 
   // Persist the seeded spend totals to the cache. Because they were loaded
   // directly (rather than recomputed) they aren't part of the computation

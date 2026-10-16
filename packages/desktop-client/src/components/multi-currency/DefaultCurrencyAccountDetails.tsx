@@ -1,20 +1,18 @@
-// [fork:mc D-016] An account's line in the change-budget-currency preview:
-// its transactions and why its currency was suggested.
+// [fork:mc D-017] An account's line in the default currency change: its
+// transactions and why a currency is suggested for it.
 import { Trans } from 'react-i18next';
 
 import { Text } from '@actual-app/components/text';
 import { theme } from '@actual-app/components/theme';
-import type { SwitchAccountPreview } from '@actual-app/core/server/multi-currency/switch';
+import type { DefaultCurrencyAccount } from '@actual-app/core/server/multi-currency/default-currency';
 
-type SwitchCurrencyAccountDetailsProps = {
-  account: SwitchAccountPreview;
-  fromCurrency: string;
+type DefaultCurrencyAccountDetailsProps = {
+  account: DefaultCurrencyAccount;
 };
 
-export function SwitchCurrencyAccountDetails({
+export function DefaultCurrencyAccountDetails({
   account,
-  fromCurrency,
-}: SwitchCurrencyAccountDetailsProps) {
+}: DefaultCurrencyAccountDetailsProps) {
   const { suggested: code, notedTransactions: noted } = account;
   return (
     <Text style={{ color: theme.pageTextSubdued, fontSize: 12 }}>
@@ -55,12 +53,6 @@ export function SwitchCurrencyAccountDetails({
         <>
           {' · '}
           <Trans>{{ code }} from the account name</Trans>
-        </>
-      )}
-      {account.reason === 'current' && account.currency !== fromCurrency && (
-        <>
-          {' · '}
-          <Trans>its own currency</Trans>
         </>
       )}
     </Text>

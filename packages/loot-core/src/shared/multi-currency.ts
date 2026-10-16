@@ -18,6 +18,169 @@ export const DEFAULT_RATES_URL = 'https://api.frankfurter.dev/v2';
 /** Synced preference keys owned by the fork. */
 export const MC_PREF_RATES_ONLINE = 'mcRatesOnline';
 export const MC_PREF_RATES_URL = 'mcRatesUrl';
+// [fork:mc D-017] Earlier budget currencies, and the rates months use
+export const MC_PREF_CURRENCY_PERIODS = 'mcCurrencyPeriods';
+export const MC_PREF_MONTH_RATES = 'mcMonthRates';
+
+// [fork:mc D-017] Budget currency by month.
+//
+// A budget can change currency from a given month on (CAD until October,
+// EUR from November). `defaultCurrencyCode` holds the latest currency;
+// `mcCurrencyPeriods` lists the earlier ones, oldest first, each with the
+// last month it covers. A transaction's `amount` is in the currency of its
+// month, so months before a change keep their numbers.
+
+export type CurrencyPeriod = {
+  currency: string;
+  /** Last month in this currency, `YYYY-MM` */
+  until: string;
+};
+
+/** A month where the budget currency changes. */
+export type CurrencyChange = {
+  /** First month in the new currency, `YYYY-MM` */
+  month: string;
+  from: string;
+  to: string;
+};
+
+const MONTH_PATTERN = /^\d{4}-\d{2}$/;
+
+/** The stored periods, oldest first; [] when the budget has one currency. */
+export function parseCurrencyPeriods(
+  value: string | null | undefined,
+): CurrencyPeriod[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value || '[]');
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) {
+    return [];
+  }
+  return parsed
+    .filter(
+      (item): item is CurrencyPeriod =>
+        item != null &&
+        isCurrencyCode(item.currency) &&
+        typeof item.until === 'string' &&
+        MONTH_PATTERN.test(item.until),
+    )
+    .map(({ currency, until }) => ({ currency, until }))
+    .sort((a, b) => (a.until < b.until ? -1 : a.until > b.until ? 1 : 0));
+}
+
+/** The budget currency of a month (`YYYY-MM`) or of a date. */
+export function getBudgetCurrencyAt(
+  monthOrDate: string,
+  periods: readonly CurrencyPeriod[],
+  latest: string,
+): string {
+  const month = monthOrDate.slice(0, 7);
+  for (const period of periods) {
+    if (month <= period.until) {
+      return period.currency;
+    }
+  }
+  return latest;
+}
+
+/** The months where the currency changes, oldest first. */
+export function getCurrencyChanges(
+  periods: readonly CurrencyPeriod[],
+  latest: string,
+): CurrencyChange[] {
+  return periods
+    .map((period, index) => ({
+      month: nextMonth(period.until),
+      from: period.currency,
+      to: periods[index + 1]?.currency ?? latest,
+    }))
+    .filter(change => change.from !== change.to);
+}
+
+function nextMonth(month: string): string {
+  const [year, number] = month.split('-').map(Number);
+  return number === 12
+    ? `${year + 1}-01`
+    : `${year}-${String(number + 1).padStart(2, '0')}`;
+}
+
+/** Key of a month's stored rate, e.g. `2026-11:CAD:EUR`. */
+export function makeMonthRateId(
+  month: string,
+  base: string,
+  quote: string,
+): string {
+  return `${month}:${base}:${quote}`;
+}
+
+/**
+ * A month's rate as stored in `mcMonthRates`. Until a month ends its rate is
+ * the average of its daily rates so far (or, before its first rate, the
+ * latest one); afterwards the average is `final`. A rate typed by the user
+ * is `manual` and stays as typed.
+ */
+export type StoredMonthRate = {
+  /** 1 base = rate quote */
+  rate: number;
+  manual?: boolean;
+  final?: boolean;
+};
+
+export type StoredMonthRates = Record<string, StoredMonthRate>;
+
+export function parseMonthRates(
+  value: string | null | undefined,
+): StoredMonthRates {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value || '{}');
+  } catch {
+    return {};
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return {};
+  }
+  const rates: StoredMonthRates = {};
+  for (const [key, entry] of Object.entries(parsed)) {
+    const rate = (entry as StoredMonthRate | null)?.rate;
+    if (typeof rate === 'number' && Number.isFinite(rate) && rate > 0) {
+      rates[key] = {
+        rate,
+        ...((entry as StoredMonthRate).manual ? { manual: true } : {}),
+        ...((entry as StoredMonthRate).final ? { final: true } : {}),
+      };
+    }
+  }
+  return rates;
+}
+
+/** A stored month rate for the pair in either direction, as 1 base = x quote. */
+export function findMonthRate(
+  rates: StoredMonthRates,
+  month: string,
+  base: string,
+  quote: string,
+): (StoredMonthRate & { inverted: boolean }) | null {
+  const direct = rates[makeMonthRateId(month, base, quote)];
+  if (direct) {
+    return { ...direct, inverted: false };
+  }
+  const inverse = rates[makeMonthRateId(month, quote, base)];
+  return inverse
+    ? { ...inverse, rate: 1 / inverse.rate, inverted: true }
+    : null;
+}
+
+/**
+ * Multiplier that carries an amount in `from`'s minor units over to `to`'s
+ * at `rate` (1 from = rate to), e.g. a leftover crossing a currency change.
+ */
+export function getCarryFactor(rate: number, from: string, to: string): number {
+  return rate * 10 ** (getDecimalPlaces(to) - getDecimalPlaces(from));
+}
 
 /** The account's currency, falling back to the budget currency. */
 export function getAccountCurrency(

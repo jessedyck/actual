@@ -20,6 +20,8 @@ import { t } from 'i18next';
 
 import { BalanceWithCarryover } from '#components/budget/BalanceWithCarryover';
 import { makeAmountGrey } from '#components/budget/util';
+// [fork:mc D-017]
+import { useBudgetCurrencyMenu } from '#components/multi-currency/McBudgetCurrencies';
 import { NotesButton } from '#components/NotesButton';
 import { CellValue, CellValueText } from '#components/spreadsheet/CellValue';
 import { Field, SheetCell } from '#components/table';
@@ -223,6 +225,8 @@ export const CategoryMonth = memo(function CategoryMonth({
     });
 
   const showScheduleIndicator = schedule && scheduleStatus;
+  // [fork:mc D-017]
+  const currencyMenu = useBudgetCurrencyMenu(category.id, month);
 
   return (
     <View
@@ -352,6 +356,16 @@ export const CategoryMonth = memo(function CategoryMonth({
                       message: t(`Budget copied until year end.`),
                     });
                   }}
+                  // [fork:mc D-017]
+                  currencyLabel={currencyMenu?.currencyLabel}
+                  onSetCurrency={
+                    currencyMenu
+                      ? () => {
+                          setMenuOpen(false);
+                          currencyMenu.onSetCurrency();
+                        }
+                      : undefined
+                  }
                 />
               </Popover>
             </View>

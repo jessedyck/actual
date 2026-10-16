@@ -3,6 +3,7 @@ import type { ComponentPropsWithoutRef } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Menu } from '@actual-app/components/menu';
+import type { MenuItem } from '@actual-app/components/menu';
 
 import { useFeatureFlag } from '#hooks/useFeatureFlag';
 
@@ -14,12 +15,17 @@ type BudgetMenuProps = Omit<
   onSetMonthsAverage: (numberOfMonths: number) => void;
   onApplyBudgetTemplate: () => void;
   onCopyUntilYearEnd: () => void;
+  // [fork:mc D-017] The budget's currency, when multi-currency is on
+  onSetCurrency?: () => void;
+  currencyLabel?: string;
 };
 export function BudgetMenu({
   onCopyLastMonthAverage,
   onSetMonthsAverage,
   onApplyBudgetTemplate,
   onCopyUntilYearEnd,
+  onSetCurrency,
+  currencyLabel,
   ...props
 }: BudgetMenuProps) {
   const { t } = useTranslation();
@@ -43,6 +49,10 @@ export function BudgetMenu({
         break;
       case 'copy-until-year-end':
         onCopyUntilYearEnd?.();
+        break;
+      // [fork:mc D-017]
+      case 'mc-set-currency':
+        onSetCurrency?.();
         break;
       default:
         throw new Error(`Unrecognized menu item: ${name}`);
@@ -81,6 +91,18 @@ export function BudgetMenu({
                 text: t('Overwrite with template'),
               },
             ]
+          : []),
+        // [fork:mc D-017]
+        ...(onSetCurrency
+          ? ([
+              Menu.line,
+              {
+                name: 'mc-set-currency',
+                text: t('Currency: {{currency}}…', {
+                  currency: currencyLabel,
+                }),
+              },
+            ] satisfies Array<MenuItem>)
           : []),
       ]}
     />

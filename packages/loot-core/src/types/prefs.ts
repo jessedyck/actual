@@ -38,6 +38,10 @@ export type SyncedPrefs = Partial<
     // [fork:mc D-015] Currency the supported reports are shown in (default:
     // the budget currency)
     | 'mcReportCurrency'
+    // [fork:mc D-017] Earlier budget currencies (JSON) and the rate each
+    // month converts at (JSON)
+    | 'mcCurrencyPeriods'
+    | 'mcMonthRates'
     | `show-account-${string}-net-worth-chart`
     | `side-nav.show-balance-history-${string}`
     // @deprecated: superseded by `transaction-table-columns-${string}`; only

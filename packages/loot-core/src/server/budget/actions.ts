@@ -2,6 +2,11 @@
 
 import * as asyncStorage from '#platform/server/asyncStorage';
 import * as db from '#server/db';
+// [fork:mc D-017] Budgets in other currencies
+import {
+  copyBudgetCurrencies,
+  getBudgetConversion,
+} from '#server/multi-currency/budget-currency';
 import * as sheet from '#server/sheet';
 import { batchMessages } from '#server/sync';
 import { getCurrency } from '#shared/currencies';
@@ -225,6 +230,8 @@ export async function copyPreviousMonth({
   const budgetData = await getBudgetData(table, prevMonth.toString());
 
   await batchMessages(async () => {
+    // [fork:mc D-017] The copied budgets keep their currencies
+    const copied: string[] = [];
     budgetData.forEach(prevBudget => {
       if (prevBudget.is_income === 1 && !isTrackingBudget()) {
         return;
@@ -237,6 +244,12 @@ export async function copyPreviousMonth({
         month,
         amount: prevBudget.amount,
       });
+      copied.push(prevBudget.category);
+    });
+    await copyBudgetCurrencies({
+      fromMonth: monthUtils.prevMonth(month),
+      toMonth: month,
+      categories: copied,
     });
   });
 }
@@ -255,6 +268,12 @@ export async function copySinglePreviousMonth({
   );
   await batchMessages(async () => {
     void setBudget({ category, month, amount: newAmount });
+    // [fork:mc D-017] With its currency
+    await copyBudgetCurrencies({
+      fromMonth: prevMonth,
+      toMonth: month,
+      categories: [category],
+    });
   });
 }
 
@@ -405,9 +424,17 @@ export async function getCategoryAverage({
 
   let sumAmount = 0;
   for (const prevMonth of months) {
-    sumAmount += await getSheetValue(
-      monthUtils.sheetForMonth(prevMonth),
-      'sum-amount-' + categoryId,
+    // [fork:mc D-017] In the currency of `month`'s budget
+    const convert = await getBudgetConversion({
+      category: categoryId,
+      fromMonth: prevMonth,
+      toMonth: month,
+    });
+    sumAmount += convert(
+      await getSheetValue(
+        monthUtils.sheetForMonth(prevMonth),
+        'sum-amount-' + categoryId,
+      ),
     );
   }
   return Math.round(sumAmount / months.length);
@@ -697,6 +724,12 @@ export async function copyUntilYearEnd({
   await batchMessages(async () => {
     for (const futureMonth of futureMonths) {
       void setBudget({ category, month: futureMonth, amount });
+      // [fork:mc D-017] With its currency
+      await copyBudgetCurrencies({
+        fromMonth: month,
+        toMonth: futureMonth,
+        categories: [category],
+      });
     }
   });
 }

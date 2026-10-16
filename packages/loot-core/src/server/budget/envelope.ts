@@ -1,4 +1,11 @@
 import * as db from '#server/db';
+// [fork:mc D-017] Budgets in other currencies
+import {
+  carryDependencies,
+  convertByFactor,
+  createBlankBudgetCells,
+  groupInputCell,
+} from '#server/multi-currency/month-rates';
 import * as sheet from '#server/sheet';
 import { resolveName } from '#server/spreadsheet/util';
 // @ts-strict-ignore
@@ -19,6 +26,8 @@ export function createBlankCategory(cat, months) {
     sheet.get().createStatic(sheetName, `carryover-${cat.id}`, false);
     sheet.get().createStatic(sheetName, `leftover-${cat.id}`, 0);
     sheet.get().createStatic(sheetName, `leftover-pos-${cat.id}`, 0);
+    // [fork:mc D-017]
+    createBlankBudgetCells(cat.id, sheetName);
   }
 }
 
@@ -53,12 +62,25 @@ export function createCategory(cat, sheetName, prevSheetName) {
         `${prevSheetName}!carryover-${cat.id}`,
         `${prevSheetName}!leftover-${cat.id}`,
         `${prevSheetName}!leftover-pos-${cat.id}`,
+        // [fork:mc D-017] Converts last month's balance when the budget's
+        // currency changed
+        ...carryDependencies(cat.id),
       ],
-      run: (budgeted, spent, prevCarryover, prevLeftover, prevLeftoverPos) => {
+      run: (
+        budgeted,
+        spent,
+        prevCarryover,
+        prevLeftover,
+        prevLeftoverPos,
+        carry,
+      ) => {
         return safeNumber(
           number(budgeted) +
             number(spent) +
-            (prevCarryover ? number(prevLeftover) : number(prevLeftoverPos)),
+            convertByFactor(
+              prevCarryover ? number(prevLeftover) : number(prevLeftoverPos),
+              carry,
+            ),
         );
       },
     });
@@ -73,23 +95,31 @@ export function createCategory(cat, sheetName, prevSheetName) {
   }
 }
 
+// [fork:mc D-017] Groups add up their categories' figures in the default
+// currency (`groupInputCell`)
 export function createCategoryGroup(group, sheetName) {
   sheet.get().createDynamic(sheetName, 'group-sum-amount-' + group.id, {
     initialValue: 0,
-    dependencies: group.categories.map(cat => `sum-amount-${cat.id}`),
+    dependencies: group.categories.map(cat =>
+      groupInputCell('sum-amount', cat.id),
+    ),
     run: sumAmounts,
   });
 
   if (!group.is_income) {
     sheet.get().createDynamic(sheetName, 'group-budget-' + group.id, {
       initialValue: 0,
-      dependencies: group.categories.map(cat => `budget-${cat.id}`),
+      dependencies: group.categories.map(cat =>
+        groupInputCell('budget', cat.id),
+      ),
       run: sumAmounts,
     });
 
     sheet.get().createDynamic(sheetName, 'group-leftover-' + group.id, {
       initialValue: 0,
-      dependencies: group.categories.map(cat => `leftover-${cat.id}`),
+      dependencies: group.categories.map(cat =>
+        groupInputCell('leftover', cat.id),
+      ),
       run: sumAmounts,
     });
   }
@@ -130,7 +160,8 @@ export function createSummary(groups, categories, prevSheetName, sheetName) {
     initialValue: 0,
     dependencies: flatten2(
       expenseCategories.map(cat => [
-        `${prevSheetName}!leftover-${cat.id}`,
+        // [fork:mc D-017] In the default currency
+        `${prevSheetName}!${groupInputCell('leftover', cat.id)}`,
         `${prevSheetName}!carryover-${cat.id}`,
       ]),
     ),
@@ -163,7 +194,8 @@ export function createSummary(groups, categories, prevSheetName, sheetName) {
     initialValue: 0,
     dependencies: flatten2(
       incomeCategories.map(c => [
-        `${sheetName}!sum-amount-${c.id}`,
+        // [fork:mc D-017] In the default currency
+        `${sheetName}!${groupInputCell('sum-amount', c.id)}`,
         `${sheetName}!carryover-${c.id}`,
       ]),
     ),
@@ -240,17 +272,18 @@ export function createBudget(meta, categories, months) {
 export function handleCategoryChange(months, oldValue, newValue) {
   // Build list of cells and dependencies that need updated
   function getDeps(sheetName, prevSheetName, groupId, cat) {
+    // [fork:mc D-017] Category figures in the default currency
     const deps: Array<[string, string[]]> = [
-      [`group-sum-amount-${groupId}`, [`sum-amount-${cat.id}`]],
-      [`group-budget-${groupId}`, [`budget-${cat.id}`]],
-      [`group-leftover-${groupId}`, [`leftover-${cat.id}`]],
+      [`group-sum-amount-${groupId}`, [groupInputCell('sum-amount', cat.id)]],
+      [`group-budget-${groupId}`, [groupInputCell('budget', cat.id)]],
+      [`group-leftover-${groupId}`, [groupInputCell('leftover', cat.id)]],
     ];
 
     if (cat.is_income) {
       deps.push([
         'buffered-auto',
         [
-          `${sheetName}!sum-amount-${cat.id}`,
+          `${sheetName}!${groupInputCell('sum-amount', cat.id)}`,
           `${sheetName}!carryover-${cat.id}`,
         ],
       ]);
@@ -258,7 +291,7 @@ export function handleCategoryChange(months, oldValue, newValue) {
       deps.push([
         'last-month-overspent',
         [
-          `${prevSheetName}!leftover-${cat.id}`,
+          `${prevSheetName}!${groupInputCell('leftover', cat.id)}`,
           `${prevSheetName}!carryover-${cat.id}`,
         ],
       ]);

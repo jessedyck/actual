@@ -85,8 +85,8 @@ export function McRevaluationButton({
               <Trans>
                 Record{' '}
                 <strong>{{ formattedDifference } as TransObjectLiteral}</strong>{' '}
-                so this account counts in the budget at what it is worth today.
-                Its {{ currency }} balance doesn't change.
+                so this account counts at what it is worth today. Its{' '}
+                {{ currency }} balance doesn't change.
               </Trans>
             </Text>
             <Text style={{ color: theme.pageTextSubdued }}>

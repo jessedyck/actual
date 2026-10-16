@@ -14,6 +14,8 @@ import type { BudgetType } from '@actual-app/core/server/prefs';
 import * as monthUtils from '@actual-app/core/shared/months';
 import type { CategoryEntity } from '@actual-app/core/types/models';
 
+// [fork:mc D-017]
+import { McBudgetCurrency } from '#components/multi-currency/McBudgetCurrencies';
 import { useCategoriesById } from '#hooks/useCategories';
 import { useFormat } from '#hooks/useFormat';
 import { useNavigate } from '#hooks/useNavigate';
@@ -443,16 +445,19 @@ export function ExpenseCategoryListItem({
           onEditCategory={onEditCategory}
           show3Columns={show3Columns}
         />
-        <ExpenseCategoryCells
-          key={`${category.id}-${show3Columns}-${showBudgetedColumn}`}
-          category={category}
-          month={month}
-          onBudgetAction={onBudgetAction}
-          show3Columns={show3Columns}
-          showBudgetedColumn={showBudgetedColumn}
-          onOpenBalanceMenu={onOpenBalanceMenu}
-          onShowActivity={onShowActivity}
-        />
+        {/* [fork:mc D-017] Amounts in the budget's currency */}
+        <McBudgetCurrency categoryId={category.id} month={month}>
+          <ExpenseCategoryCells
+            key={`${category.id}-${show3Columns}-${showBudgetedColumn}`}
+            category={category}
+            month={month}
+            onBudgetAction={onBudgetAction}
+            show3Columns={show3Columns}
+            showBudgetedColumn={showBudgetedColumn}
+            onOpenBalanceMenu={onOpenBalanceMenu}
+            onShowActivity={onShowActivity}
+          />
+        </McBudgetCurrency>
       </View>
     </GridListItem>
   );

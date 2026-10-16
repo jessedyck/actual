@@ -14,9 +14,11 @@
 > [currency feedback issue #5191](https://github.com/actualbudget/actual/issues/5191).
 
 A personal fork of [Actual Budget](https://github.com/actualbudget/actual)
-that adds accounts in other currencies. The budget stays in one currency;
-each account can hold its own, with amounts converted using daily rates from
-[Frankfurter](https://frankfurter.dev) (free, no key) or rates you enter.
+that adds accounts and budgets in other currencies. A budget file has a
+default currency; each account, and each category's budget in each month,
+can have its own. Amounts are converted at each month's average of the daily
+rates from [Frankfurter](https://frankfurter.dev) (free, no key) or rates
+you enter.
 
 Every difference from upstream is logged in [DEVIATIONS.md](DEVIATIONS.md) so
 the fork can switch to upstream's own implementation as it lands.
@@ -29,7 +31,7 @@ the fork can switch to upstream's own implementation as it lands.
 | Automatic and manual exchange rates                                            | Done    |
 | Conversion on every save, transfers between currencies, splits                 | Done    |
 | Starting balance and backfill when an account gets a currency                  | Done    |
-| Settings: turning it on, exchange rates, budget-currency lock                  | Done    |
+| Settings: turning it on, exchange rates, default-currency lock                 | Done    |
 | Accounts: currency when creating or changing, balances in that currency        | Done    |
 | Register (desktop): entering and showing amounts in the account's currency     | Done    |
 | Reconcile in the account's currency (desktop)                                  | Done    |
@@ -39,7 +41,8 @@ the fork can switch to upstream's own implementation as it lands.
 | Net worth report: accounts valued at each period's rate, shown in any currency | Done    |
 | Cash flow report (page and card) in any currency                               | Done    |
 | Custom and spending reports (pages and cards) in any currency                  | Done    |
-| Changing the budget currency (for example CAD to EUR), history included        | Done    |
+| A currency on each budget (per category and month), month rates                | Done    |
+| Changing the default currency (for example CAD to EUR), keeping past budgets   | Done    |
 | Other reports (summary, budget analysis, calendar…) in another currency        | Planned |
 
 ## Log
@@ -47,10 +50,19 @@ the fork can switch to upstream's own implementation as it lands.
 What was done, newest first. All of it was implemented by an AI assistant;
 [DEVIATIONS.md](DEVIATIONS.md) has the details of every change.
 
+- **2026-10-16** · A currency on each budget: each category's budget in
+  each month can be in its own currency (budget menu → _Currency_), and
+  counts spending in it at the month's average rate; group totals and To
+  Budget stay in the default currency. The rate each month uses is shown
+  under its name and can be changed. _Change default currency_ replaces
+  _Change budget currency_: budgets and accounts without a currency of their
+  own can keep the old one, so past months show what they showed. Wording:
+  "default currency" and "budget file".
 - **2026-10-15** · Review round 2: All accounts (and other views of several
   accounts) shows each transaction in its own account's currency with the
   currency symbol; an info button on a foreign account explains "Worth
   today" and "In budget"; clearer wording in the multi-currency settings.
+  [7be3a7e](https://github.com/jessedyck/actual/commit/7be3a7e)
 - **2026-10-15** · Fixes found while reviewing screenshots: the stored
   exchange rates list no longer squashes its rows when it holds many rates,
   and the currency change's result counts a split once, like its preview.
@@ -145,16 +157,22 @@ docker build -f sync-server.Dockerfile -t actual-server:multicurrency .
 
 1. _Settings → Show advanced settings → Experimental features_: enable
    **Currency support** and **Multi-currency accounts**.
-2. _Settings → Currency_: choose your budget currency (for example EUR).
+2. _Settings → Currency_: choose your default currency (for example CAD).
 3. Create an account and pick its currency.
+4. To budget a category in another currency for a month, open its budget
+   menu on the budget page and choose _Currency_.
+5. To make another currency the default (for example after moving), use
+   _Settings → Multi-currency accounts → Change default currency_.
 
 ## How amounts are stored
 
-Every transaction keeps `amount` in the budget currency, exactly like
-upstream, so budgets and reports are unaffected. Accounts in another currency
-also store the amount in their own currency. Editing that amount converts it
-again at the transaction's date; editing the budget amount directly records
-what your bank actually charged.
+Every transaction keeps `amount` in the default currency, exactly like
+upstream, so balances, To Budget and reports are unaffected. Accounts in
+another currency also store the amount in their own currency, and a
+transaction counted in a budget with its own currency stores its value in
+that currency. Editing an account-currency amount converts it again at its
+month's rate; editing the default-currency amount directly records what your
+bank actually charged.
 
 ## Using official Actual on the same budget
 
@@ -178,7 +196,7 @@ same or a newer upstream version:
    to run, let the image rebuild, and open the budget with it once.
 2. Switch the image back to `actualbudget/actual-server`.
 
-Official Actual then shows budget-currency amounts everywhere and leaves the
+Official Actual then shows default-currency amounts everywhere and leaves the
 fork's extra data untouched, so switching back to the fork later still works.
 
 ## GitHub Actions in the fork

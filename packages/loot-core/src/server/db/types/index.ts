@@ -223,6 +223,8 @@ export type DbTransaction = {
   reconciled: 1 | 0;
   // [fork:mc D-002] Amount in the account's own currency (its minor units)
   mc_amount?: number | null;
+  // [fork:mc D-017] Value in its budget's currency, when not the default
+  mc_budget_amount?: number | null;
   // Unused in the codebase
   pending?: 1 | 0 | null;
   location?: string | null;
@@ -236,7 +238,8 @@ export type DbReflectBudget = {
   amount: number;
   carryover: number;
   goal: number;
-  long_goal: number;
+  long_goal: number; // [fork:mc D-017] The budget's currency; null means the default
+  mc_currency?: string | null;
 };
 
 export type DbZeroBudgetMonth = {
@@ -251,7 +254,8 @@ export type DbZeroBudget = {
   amount: number;
   carryover: number;
   goal: number;
-  long_goal: number;
+  long_goal: number; // [fork:mc D-017] The budget's currency; null means the default
+  mc_currency?: string | null;
 };
 
 export type DbTransactionFilter = {
@@ -334,6 +338,8 @@ export type DbViewTransactionInternal = {
   reconciled: DbTransaction['reconciled'];
   // [fork:mc D-002]
   mc_amount?: DbTransaction['mc_amount'];
+  // [fork:mc D-017]
+  mc_budget_amount?: DbTransaction['mc_budget_amount'];
 };
 
 export type DbViewTransactionInternalAlive = DbViewTransactionInternal;

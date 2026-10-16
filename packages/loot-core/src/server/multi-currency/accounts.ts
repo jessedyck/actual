@@ -5,7 +5,9 @@ import { getDecimalPlaces } from '#shared/currencies';
 import { isCurrencyCode } from '#shared/multi-currency';
 import { amountToInteger } from '#shared/util';
 
-import { convertAmount, ensureRates, getMultiCurrencyContext } from './rates';
+import { getBudgetValue, getBudgetValueUpdates } from './budget-currency';
+import { createMonthRateLookup, loadBudgetCurrencies } from './month-rates';
+import { getMultiCurrencyContext } from './rates';
 import { loadForeignAccounts } from './transactions';
 
 /**
@@ -40,8 +42,11 @@ export async function getStartingBalanceAmounts({
   }
   const { budgetCurrency } = await getMultiCurrencyContext();
   const mcAmount = amountToInteger(balance, getDecimalPlaces(currency));
+  // [fork:mc D-017] At the rate of the date's month
+  const lookup = createMonthRateLookup();
   const amount =
-    (await convertAmount(mcAmount, date, currency, budgetCurrency)) ?? 0;
+    (await lookup.convert(mcAmount, date, currency, budgetCurrency)) ?? 0;
+  await lookup.flush();
   return { amount, mc_amount: mcAmount };
 }
 
@@ -65,7 +70,7 @@ export function parseWorkaroundNote(
   return amountToInteger(parseFloat(match[1]), getDecimalPlaces(currency));
 }
 
-/** [fork:mc D-016] The currency of an amount written by the workaround. */
+/** [fork:mc D-017] The currency of an amount written by the workaround. */
 export function getWorkaroundNoteCurrency(
   notes: string | null | undefined,
 ): string | null {
@@ -81,10 +86,12 @@ type BackfillRow = {
   notes: string | null;
   is_parent: 0 | 1;
   parent_id: string | null;
+  category: string | null;
+  mc_budget_amount: number | null;
 };
 
 const BACKFILL_FIELDS =
-  'id, amount, mc_amount, date, notes, is_parent, parent_id';
+  'id, amount, mc_amount, date, notes, is_parent, parent_id, category, mc_budget_amount';
 
 /**
  * Converting split parents and children one by one can leave the children a
@@ -125,8 +132,9 @@ export function balanceSplits(
 /**
  * Sets an account's currency and fills in account-currency amounts for its
  * existing transactions: from workaround notes when present, otherwise by
- * converting the budget amount at each transaction's date. Setting the
- * budget currency (or null) clears them.
+ * converting the budget amount at the rate of each transaction's month.
+ * Setting the budget currency (or null) clears them. [fork:mc D-017] Values
+ * counted in budgets of another currency follow the new account amounts.
  */
 export async function setAccountCurrency({
   id,
@@ -150,20 +158,20 @@ export async function setAccountCurrency({
     [id],
   );
 
-  const updates: Array<{ id: string; mc_amount: number | null }> = [];
+  const updates: Array<{
+    id: string;
+    mc_amount: number | null;
+    mc_budget_amount?: number | null;
+  }> = [];
   let missingRates = 0;
+  const lookup = createMonthRateLookup();
   if (code) {
-    await ensureRates(
-      code,
-      budgetCurrency,
-      rows.map(row => db.fromDateRepr(row.date)),
-    );
     const values = new Map<string, number | null>();
     for (const row of rows) {
       const fromNote = parseWorkaroundNote(row.notes, code);
       const mcAmount =
         fromNote ??
-        (await convertAmount(
+        (await lookup.convert(
           row.amount,
           db.fromDateRepr(row.date),
           budgetCurrency,
@@ -183,6 +191,36 @@ export async function setAccountCurrency({
       updates.push({ id: row.id, mc_amount: null });
     }
   }
+
+  // [fork:mc D-017] Values counted in budgets of another currency
+  const context = await getMultiCurrencyContext();
+  const budgets = await loadBudgetCurrencies();
+  const accountRow = await db.first<Pick<db.DbAccount, 'offbudget'>>(
+    'SELECT offbudget FROM accounts WHERE id = ?',
+    [id],
+  );
+  const byId = new Map(rows.map(row => [row.id, row]));
+  for (const update of updates) {
+    const row = byId.get(update.id) as BackfillRow;
+    if (row.is_parent === 1) {
+      continue;
+    }
+    const value = await getBudgetValue({
+      context,
+      budgets,
+      accountCurrency: code ?? budgetCurrency,
+      isOffBudget: accountRow?.offbudget === 1,
+      category: row.category,
+      date: db.fromDateRepr(row.date),
+      amount: row.amount,
+      mcAmount: update.mc_amount,
+      lookup,
+    });
+    if (value !== row.mc_budget_amount) {
+      update.mc_budget_amount = value;
+    }
+  }
+  await lookup.flush();
 
   await batchMessages(async () => {
     await db.update('accounts', { id, mc_currency: code });
@@ -209,6 +247,7 @@ export async function recomputePending(): Promise<{
   const updates: Array<{ id: string; amount?: number; mc_amount?: number }> =
     [];
   let stillPending = 0;
+  const lookup = createMonthRateLookup();
 
   for (const [accountId, currency] of foreign) {
     const rows = await db.all<BackfillRow>(
@@ -221,15 +260,10 @@ export async function recomputePending(): Promise<{
     if (rows.length === 0) {
       continue;
     }
-    await ensureRates(
-      currency,
-      budgetCurrency,
-      rows.map(row => db.fromDateRepr(row.date)),
-    );
     for (const row of rows) {
       const date = db.fromDateRepr(row.date);
       if (row.mc_amount != null) {
-        const amount = await convertAmount(
+        const amount = await lookup.convert(
           row.mc_amount,
           date,
           currency,
@@ -241,7 +275,7 @@ export async function recomputePending(): Promise<{
           updates.push({ id: row.id, amount });
         }
       } else {
-        const mcAmount = await convertAmount(
+        const mcAmount = await lookup.convert(
           row.amount,
           date,
           budgetCurrency,
@@ -256,12 +290,29 @@ export async function recomputePending(): Promise<{
     }
   }
 
-  if (updates.length > 0) {
+  await lookup.flush();
+
+  // [fork:mc D-017] Values counted in a budget's currency that waited for
+  // a rate: 0 while the transaction's own amount isn't (an exchange rate
+  // adjustment, 0 in its account's currency, counts 0 there)
+  const waiting = 'mc_budget_amount = 0 AND COALESCE(mc_amount, amount) != 0';
+  const budgetUpdates = await getBudgetValueUpdates({
+    where: waiting,
+    params: [],
+  });
+  const waitingCount = await db.first<{ count: number }>(
+    `SELECT COUNT(*) AS count FROM v_transactions_internal_alive
+      WHERE ${waiting}`,
+  );
+  // Rows whose value is unchanged still wait
+  stillPending += (waitingCount?.count ?? 0) - budgetUpdates.length;
+
+  if (updates.length > 0 || budgetUpdates.length > 0) {
     await batchMessages(async () => {
-      for (const update of updates) {
+      for (const update of [...updates, ...budgetUpdates]) {
         await db.updateTransaction(update);
       }
     });
   }
-  return { updated: updates.length, stillPending };
+  return { updated: updates.length + budgetUpdates.length, stillPending };
 }

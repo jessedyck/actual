@@ -7,6 +7,8 @@ import { currencies, getCurrency } from '@actual-app/core/shared/currencies';
 import { css } from '@emotion/css';
 
 import { Checkbox } from '#components/forms';
+// [fork:mc D-017]
+import { useHasBudgetCurrencies } from '#components/multi-currency/McBudgetCurrencies';
 // [fork:mc D-007]
 import {
   useHasForeignCurrencyAccounts,
@@ -84,9 +86,12 @@ export function CurrencySettings() {
     'defaultCurrencyCode',
   );
   const selectedCurrencyCode = defaultCurrencyCode || '';
-  // [fork:mc D-007] Existing budget amounts would be read in the wrong
-  // currency if the budget currency changed while accounts use their own
-  const isBudgetCurrencyLocked = useHasForeignCurrencyAccounts();
+  // [fork:mc D-007, D-017] Existing amounts would be read in the wrong
+  // currency if the default currency changed while accounts or budgets use
+  // their own: "Change default currency" handles that instead
+  const hasForeignAccounts = useHasForeignCurrencyAccounts();
+  const hasBudgetCurrencies = useHasBudgetCurrencies();
+  const isBudgetCurrencyLocked = hasForeignAccounts || hasBudgetCurrencies;
   const { isEnabled: isMultiCurrencyEnabled } = useMultiCurrency();
 
   const [symbolPosition, setSymbolPositionPref] = useSyncedPref(
@@ -154,14 +159,14 @@ export function CurrencySettings() {
       <SettingsRow
         title={t('Default currency')}
         description={
-          // [fork:mc D-016] Pointing to the conversion
+          // [fork:mc D-017] Pointing to "Change default currency"
           isBudgetCurrencyLocked
             ? t(
-                'Locked because some accounts use their own currency. To move the budget to another currency, use Change budget currency under Multi-currency accounts.',
+                'Locked because some accounts or budgets have a currency of their own. To change it, use Change default currency under Multi-currency accounts.',
               )
             : isMultiCurrencyEnabled
               ? t(
-                  'Changing it only relabels existing amounts. To convert the budget and its history to another currency, use Change budget currency under Multi-currency accounts.',
+                  'Changing it here relabels every amount. To keep past budgets and accounts in the current currency, use Change default currency under Multi-currency accounts.',
                 )
               : undefined
         }

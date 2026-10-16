@@ -78,18 +78,18 @@ export function McBalancesHelp({
             )}
             <Text>
               <Trans>
-                <strong>In budget</strong> is what your budget has counted for
-                this account: every transaction converted to{' '}
-                {{ budgetCurrency }} at the rate of its own day, then added up.
-                That makes {{ inBudget }}.
+                <strong>In budget</strong> is what this account counts for in{' '}
+                {{ budgetCurrency }}, the default currency: every transaction
+                converted at its month's average rate, then added up. That makes{' '}
+                {{ inBudget }}.
               </Trans>
             </Text>
             {difference !== 0 && (
               <Text style={{ color: theme.pageTextSubdued }}>
                 <Trans>
                   They differ by {{ gap }} because the rate has moved since the
-                  money came in. "Adjust to today's value" records that gap in
-                  the budget so the two match.
+                  money came in. "Adjust to today's value" records that gap as a
+                  transaction so the two match.
                 </Trans>
               </Text>
             )}

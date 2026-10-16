@@ -63,7 +63,7 @@ export function ExchangeRatesSetting({
     <SettingsRow
       title={t('Exchange rates')}
       description={t(
-        'Rates stored in this budget, newest first. A rate you enter wins over a downloaded one for the same day. Changing a rate does not change transactions that are already converted.',
+        "Daily rates stored in this budget file, newest first. A rate you enter wins over a downloaded one for the same day. Each month converts at the average of its daily rates; the rate under a month's name on the budget page can be changed for that month alone.",
       )}
     >
       <AddExchangeRateForm

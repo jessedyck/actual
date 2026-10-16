@@ -140,7 +140,7 @@ export function McAccountBalances({
         name={t('In budget:')}
         value={format(budgetValue ?? 0, 'financial')}
         title={t(
-          "The budget-currency total of this account's transactions, at the rates they were recorded with",
+          "The default-currency total of this account's transactions, each at its month's average rate",
         )}
       />
       <McBalancesHelp

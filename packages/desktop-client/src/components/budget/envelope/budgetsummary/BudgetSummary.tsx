@@ -15,6 +15,8 @@ import * as monthUtils from '@actual-app/core/shared/months';
 import { css } from '@emotion/css';
 
 import { useEnvelopeBudget } from '#components/budget/envelope/EnvelopeBudgetContext';
+// [fork:mc D-017]
+import { McMonthRates } from '#components/multi-currency/McMonthRates';
 import { NotesButton } from '#components/NotesButton';
 import { useLocale } from '#hooks/useLocale';
 import { SheetNameProvider } from '#hooks/useSheetName';
@@ -135,6 +137,8 @@ export const BudgetSummary = memo(({ month }: BudgetSummaryProps) => {
           >
             {monthUtils.format(month, 'MMMM', locale)}
           </div>
+          {/* [fork:mc D-017] The rates this month converts at */}
+          <McMonthRates month={month} />
 
           <View
             style={{

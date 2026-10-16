@@ -1,11 +1,25 @@
 // [fork:mc D-005] Server handlers for the fork's multi-currency feature.
+import { logger } from '#platform/server/log';
 import { createApp } from '#server/app';
-import { mutator } from '#server/mutators';
+import { mutator, runMutator } from '#server/mutators';
+import { addSyncListener } from '#server/sync';
 import { undoable } from '#server/undo';
+import {
+  MC_PREF_CURRENCY_PERIODS,
+  MC_PREF_MONTH_RATES,
+} from '#shared/multi-currency';
 
 import { recomputePending, setAccountCurrency } from './accounts';
+import { setBudgetCurrency } from './budget-currency';
+import { previewDefaultCurrency, setDefaultCurrency } from './default-currency';
+import {
+  applyBudgetFactors,
+  createMonthRateLookup,
+  getMonthRates,
+  refreshMonthRates,
+  setMonthRate,
+} from './month-rates';
 import * as rates from './rates';
-import { previewCurrencySwitch, switchBudgetCurrency } from './switch';
 
 export type MultiCurrencyHandlers = {
   'mc-get-context': typeof getContext;
@@ -18,8 +32,13 @@ export type MultiCurrencyHandlers = {
   'mc-account-set-currency': typeof setAccountCurrency;
   'mc-recompute-pending': typeof recomputePending;
   'mc-rates-at': typeof getRatesAt;
-  'mc-switch-preview': typeof previewCurrencySwitch;
-  'mc-switch-apply': typeof switchBudgetCurrency;
+  'mc-default-currency-preview': typeof previewDefaultCurrency;
+  'mc-default-currency-set': typeof setDefaultCurrency;
+  'mc-budget-set-currency': typeof setBudgetCurrency;
+  'mc-month-rates': typeof getMonthRates;
+  'mc-month-rate-set': typeof setMonthRate;
+  'mc-month-rates-refresh': typeof refreshMonthRates;
+  'mc-month-convert': typeof convertAtMonth;
 };
 
 export const app = createApp<MultiCurrencyHandlers>();
@@ -37,9 +56,52 @@ app.method('mc-account-set-currency', mutator(undoable(setAccountCurrency)));
 app.method('mc-recompute-pending', mutator(undoable(recomputePending)));
 // [fork:mc D-015] Report valuation
 app.method('mc-rates-at', mutator(getRatesAt));
-// [fork:mc D-016] Changing the budget currency
-app.method('mc-switch-preview', mutator(previewCurrencySwitch));
-app.method('mc-switch-apply', mutator(undoable(switchBudgetCurrency)));
+// [fork:mc D-017] Default currency, budget currencies and month rates
+app.method('mc-default-currency-preview', mutator(previewDefaultCurrency));
+app.method('mc-default-currency-set', mutator(undoable(setDefaultCurrency)));
+app.method('mc-budget-set-currency', mutator(undoable(setBudgetCurrency)));
+app.method('mc-month-rates', mutator(getMonthRates));
+app.method('mc-month-rate-set', mutator(undoable(setMonthRate)));
+app.method('mc-month-rates-refresh', mutator(refreshMonthRates));
+app.method('mc-month-convert', mutator(convertAtMonth));
+
+/**
+ * [fork:mc D-017] While a budget file is open: keeps the budget's
+ * conversion cells in step with currency and rate changes (including undo
+ * and changes synced from other devices), and brings this month's rates up
+ * to date once.
+ */
+type ChangedRows = Map<string, Record<string, unknown>>;
+
+app.service(() => {
+  const unlisten = addSyncListener((oldValues, newValues) => {
+    const rowsOf = (data: Map<string, unknown>, table: string) =>
+      data.get(table) as ChangedRows | undefined;
+    const changedPrefs = [
+      ...(rowsOf(newValues, 'preferences')?.keys() ?? []),
+    ].some(id =>
+      [
+        MC_PREF_MONTH_RATES,
+        MC_PREF_CURRENCY_PERIODS,
+        'defaultCurrencyCode',
+      ].includes(id),
+    );
+    const changedBudgets = ['zero_budgets', 'reflect_budgets'].some(table =>
+      [...(rowsOf(newValues, table)?.entries() ?? [])].some(
+        ([id, row]) =>
+          'mc_currency' in row &&
+          rowsOf(oldValues, table)?.get(id)?.mc_currency !== row.mc_currency,
+      ),
+    );
+    if (changedPrefs || changedBudgets || newValues.has('categories')) {
+      applyBudgetFactors();
+    }
+  });
+  void runMutator(() => refreshMonthRates()).catch(error => {
+    logger.warn('[multi-currency] Could not refresh month rates:', error);
+  });
+  return unlisten;
+});
 
 async function getContext(): Promise<
   rates.MultiCurrencyContext & rates.RateSettings
@@ -77,6 +139,24 @@ async function convert({
   to: string;
 }): Promise<number | null> {
   return rates.convertAmount(amount, date, from, to);
+}
+
+/** [fork:mc D-017] Minor units of `from` in `to` at a month's rate. */
+async function convertAtMonth({
+  amount,
+  month,
+  from,
+  to,
+}: {
+  amount: number;
+  month: string;
+  from: string;
+  to: string;
+}): Promise<number | null> {
+  const lookup = createMonthRateLookup();
+  const converted = await lookup.convert(amount, month, from, to);
+  await lookup.flush();
+  return converted;
 }
 
 async function deleteRate({ id }: { id: string }): Promise<void> {

@@ -1,11 +1,11 @@
-// [fork:mc D-016]
+// [fork:mc D-017]
 import type { MockInstance } from 'vitest';
 
 import * as db from '#server/db';
 import { insertRule } from '#server/transactions/transaction-rules';
 
+import { previewDefaultCurrency, setDefaultCurrency } from './default-currency';
 import { setManualRate } from './rates';
-import { previewCurrencySwitch, switchBudgetCurrency } from './switch';
 
 // Test dates are in 2016 because `currentDay()` is pinned to 2017-01-01
 // under test; the network is never reached.
@@ -37,8 +37,8 @@ async function rate(date: string, base: string, value: number) {
   await setManualRate({ date, base, quote: 'EUR', rate: value });
 }
 
-// A CAD budget: a CAD chequing account, a EUR account recorded in CAD with
-// the docs workaround, and an account that already has its own currency
+// A CAD budget file: a CAD chequing account, a EUR account recorded in CAD
+// with the docs workaround, and an account that already has its own currency
 async function setupBudget() {
   await setPref('flags.multiCurrency', 'true');
   await setPref('defaultCurrencyCode', 'CAD');
@@ -232,9 +232,15 @@ async function getTransactions() {
     id: string;
     amount: number;
     mc_amount: number | null;
-  }>('SELECT id, amount, mc_amount FROM v_transactions_internal_alive');
+    mc_budget_amount: number | null;
+  }>(
+    'SELECT id, amount, mc_amount, mc_budget_amount FROM v_transactions_internal_alive',
+  );
   return Object.fromEntries(
-    rows.map(row => [row.id, { amount: row.amount, mc: row.mc_amount }]),
+    rows.map(row => [
+      row.id,
+      { amount: row.amount, mc: row.mc_amount, budget: row.mc_budget_amount },
+    ]),
   );
 }
 
@@ -251,42 +257,51 @@ async function getRule(id: string) {
   );
 }
 
-describe('changing the budget currency', () => {
-  it('suggests each account its currency', async () => {
+async function getHeld(month: string) {
+  const row = await db.first<{ buffered: number }>(
+    'SELECT buffered FROM zero_budget_months WHERE id = ?',
+    [month],
+  );
+  return row?.buffered;
+}
+
+async function getAccountCurrency(id: string) {
+  const row = await db.first<{ mc_currency: string | null }>(
+    'SELECT mc_currency FROM accounts WHERE id = ?',
+    [id],
+  );
+  return row?.mc_currency;
+}
+
+describe('changing the default currency', () => {
+  it('suggests each account without a currency the one it holds', async () => {
     await setupBudget();
     await db.insertAccount({ id: 'named', name: 'Tokyo (JPY)' });
     await db.insertAccount({ id: 'noted', name: 'Savings' });
     await db.insert('notes', { id: 'account-noted', note: '#currency:USD' });
 
-    const preview = await previewCurrencySwitch({ toCurrency: 'EUR' });
-    expect(preview).toMatchObject({
-      fromCurrency: 'CAD',
-      toCurrency: 'EUR',
-      todayRate: 0.66,
-      // A split counts once
-      transactions: 10,
-      firstDate: '2016-10-05',
-      budgetMonths: 3,
-      rulesWithAmounts: 2,
-      workaroundRules: [{ id: 'workaround', accounts: ['Livret'] }],
-    });
+    const preview = await previewDefaultCurrency({ toCurrency: 'EUR' });
     const byId = Object.fromEntries(
       preview.accounts.map(account => [account.id, account]),
     );
+    expect(preview.fromCurrency).toBe('CAD');
+    expect(preview.todayRate).toBe(0.66);
+    expect(preview.keepUntil).toBe('2017-01');
+    // The budgets of October and December have no currency of their own
+    expect(preview.unsetBudgets).toBe(3);
     expect(byId.chq).toMatchObject({
-      currency: 'CAD',
+      currency: null,
       suggested: 'CAD',
       reason: 'current',
-      transactions: 5,
     });
     expect(byId.eur).toMatchObject({
-      currency: 'CAD',
+      currency: null,
       suggested: 'EUR',
       reason: 'transaction-notes',
       transactions: 4,
       notedTransactions: 3,
     });
-    expect(byId.gbp).toMatchObject({ currency: 'GBP', suggested: 'GBP' });
+    expect(byId.gbp).toMatchObject({ currency: 'GBP', reason: 'current' });
     expect(byId.named).toMatchObject({
       suggested: 'JPY',
       reason: 'account-name',
@@ -295,128 +310,130 @@ describe('changing the budget currency', () => {
       suggested: 'USD',
       reason: 'account-note',
     });
+    expect(preview.workaroundRules).toEqual([
+      { id: 'workaround', accountIds: ['eur'], accounts: ['Livret'] },
+    ]);
   });
 
-  it('converts the history at each date', async () => {
+  it('keeps past budgets as they were', async () => {
     await setupBudget();
-    const result = await switchBudgetCurrency({
+    const result = await setDefaultCurrency({
       toCurrency: 'EUR',
-      accountCurrencies: { chq: 'CAD', eur: 'EUR', gbp: 'GBP' },
+      accountCurrencies: { chq: 'CAD', eur: 'EUR' },
+      keepBudgets: true,
     });
-    expect(result).toEqual({
-      // A split counts once, as in the preview
-      transactions: 10,
-      budgets: 4,
-      rules: 2,
-      deletedRules: 1,
-    });
+    const rows = await getTransactions();
 
-    const transactions = await getTransactions();
-    // Chequing keeps its CAD amounts and gets EUR ones at the day's rate
-    expect(transactions.c1).toEqual({ amount: -7000, mc: -10000 });
-    // The workaround account takes its amounts from the notes, or converts
-    expect(transactions.e1).toEqual({ amount: -5243, mc: null });
-    expect(transactions.e2).toEqual({ amount: -680, mc: null });
-    // The EUR side of a transfer decides both budget amounts
-    expect(transactions.t2).toEqual({ amount: 33950, mc: null });
-    expect(transactions.t1).toEqual({ amount: -33950, mc: -50000 });
-    // Splits still add up
-    expect([1, 2, 3].map(index => transactions[`p${index}`].mc)).toEqual([
-      -333, -334, -334,
-    ]);
-    expect(transactions.p.mc).toBe(-1001);
-    expect(transactions.p.amount).toBe(
-      [1, 2, 3].reduce(
-        (total, index) => total + transactions[`p${index}`].amount,
-        0,
-      ),
+    // CAD stays CAD; its value in EUR is at its month's rate
+    expect(rows.c1).toEqual({ amount: -7000, mc: -10000, budget: null });
+    // The December budgets stay in CAD and count what they counted
+    expect(rows.bill).toEqual({ amount: -66000, mc: -100000, budget: -100000 });
+    expect(rows.groceries).toEqual({ amount: -2640, mc: -4000, budget: -4000 });
+    // The workaround account's amounts come from its notes, or at the
+    // month's rate
+    expect(rows.e1).toEqual({ amount: -5243, mc: null, budget: null });
+    expect(rows.e2).toEqual({ amount: -680, mc: null, budget: null });
+    // Transfers mirror; the EUR side decides
+    expect(rows.t2).toEqual({ amount: 33950, mc: null, budget: null });
+    expect(rows.t1).toEqual({ amount: -33950, mc: -50000, budget: null });
+    // Splits add up
+    expect(rows.p.amount).toBe(
+      rows.p1.amount + rows.p2.amount + rows.p3.amount,
     );
-    expect(transactions.q).toEqual({ amount: -2000, mc: null });
-    expect(transactions.q1).toEqual({ amount: -667, mc: null });
-    expect(transactions.q2).toEqual({ amount: -1333, mc: null });
-    // An account with its own currency keeps its amounts
-    expect(transactions.g1).toEqual({ amount: -1150, mc: -1000 });
+    expect(rows.q).toEqual({ amount: -2000, mc: null, budget: null });
+    expect([rows.q1.amount, rows.q2.amount]).toEqual([-667, -1333]);
+    // GBP stays GBP
+    expect(rows.g1).toEqual({ amount: -1150, mc: -1000, budget: null });
 
-    const accounts = await db.all<{ id: string; mc_currency: string | null }>(
-      'SELECT id, mc_currency FROM accounts ORDER BY id',
+    expect(await getAccountCurrency('chq')).toBe('CAD');
+    expect(await getAccountCurrency('eur')).toBeNull();
+    expect(await getAccountCurrency('gbp')).toBe('GBP');
+
+    // Budget amounts don't change
+    const budgets = await db.all<{ id: string; amount: number }>(
+      'SELECT id, amount FROM zero_budgets ORDER BY id',
     );
-    expect(accounts).toEqual([
-      { id: 'chq', mc_currency: 'CAD' },
-      { id: 'eur', mc_currency: null },
-      { id: 'gbp', mc_currency: 'GBP' },
-    ]);
-
-    // Budgets at the month's average rate, future months at today's
-    const budgets = await db.all<{
-      id: string;
-      amount: number;
-      goal: number | null;
-      long_goal: number | null;
-    }>('SELECT id, amount, goal, long_goal FROM zero_budgets ORDER BY id');
     expect(budgets).toEqual([
-      { id: '201610-food', amount: 35000, goal: 42000, long_goal: 1 },
-      // The 40.00 spent at its day's 0.66, the other 60.00 at the month's
-      // average: 14 days at 0.68 and 17 at 0.66
-      { id: '201612-food', amount: 6654, goal: null, long_goal: null },
-      // Spent exactly as budgeted: still exactly spent
-      { id: '201612-rent', amount: 66000, goal: null, long_goal: null },
-      { id: '201702-food', amount: 6600, goal: null, long_goal: null },
+      { id: '201610-food', amount: 50000 },
+      { id: '201612-food', amount: 10000 },
+      { id: '201612-rent', amount: 100000 },
+      { id: '201702-food', amount: 10000 },
     ]);
-    expect(transactions.bill.amount).toBe(-66000);
-    expect(await db.first('SELECT buffered FROM zero_budget_months')).toEqual({
-      buffered: 13600,
-    });
+    // Money held for next month is in the default currency: November's
+    // average rate
+    expect(await getHeld('2016-11')).toBe(13600);
 
-    // Rules at today's rate; the workaround's rule is gone
-    expect((await getRule('rent'))?.conditions[0].value).toBe(-99000);
-    expect(await getRule('range')).toMatchObject({
-      conditions: [{ value: { num1: -6600, num2: -3300 } }],
-      actions: [{ value: -1320 }],
-    });
-    expect((await getRule('payee'))?.conditions[0].value).toBe('shop');
-    expect((await getRule('workaround'))?.tombstone).toBe(1);
-
-    // The new currency's formats, as the currency setting would set them
     expect(await getPref('defaultCurrencyCode')).toBe('EUR');
-    expect(await getPref('numberFormat')).toBe('dot-comma');
-    expect(await getPref('currencySymbolPosition')).toBe('after');
+    expect(JSON.parse((await getPref('mcCurrencyPeriods')) as string)).toEqual([
+      { currency: 'CAD', until: '2017-01' },
+    ]);
     expect(await getPref('mcReportCurrency')).toBe('');
+    expect(await getPref('numberFormat')).toBe('dot-comma');
+
+    // The workaround rule converted amounts into CAD; it goes
+    expect((await getRule('workaround'))?.tombstone).toBe(1);
+    // Rules for every account keep their amounts
+    expect((await getRule('rent'))?.conditions[0].value).toBe(-150000);
+    expect(result).toMatchObject({ deletedRules: 1, rules: 0 });
   });
 
-  it('keeps accounts that are left out in their currency', async () => {
+  it('lets accounts and budgets without a currency follow', async () => {
     await setupBudget();
-    await switchBudgetCurrency({ toCurrency: 'EUR', accountCurrencies: {} });
-    const transactions = await getTransactions();
-    // The workaround account stays in CAD: its notes are not read
-    expect(transactions.e1).toEqual({ amount: -5506, mc: -7865 });
-    expect(transactions.g1).toEqual({ amount: -1150, mc: -1000 });
+    await setDefaultCurrency({
+      toCurrency: 'EUR',
+      accountCurrencies: {},
+      keepBudgets: false,
+    });
+    const rows = await getTransactions();
+    // The chequing account follows the default currency: same numbers
+    expect(rows.c1).toEqual({ amount: -10000, mc: null, budget: null });
+    expect(rows.bill).toEqual({ amount: -100000, mc: null, budget: null });
+    expect(await getAccountCurrency('chq')).toBeNull();
+    expect(await getPref('mcCurrencyPeriods')).toBeUndefined();
+    // Like the budgets, money held keeps its number
+    expect(await getHeld('2016-11')).toBe(20000);
+    // The workaround account follows too: its rule, converting into CAD,
+    // goes
+    expect((await getRule('workaround'))?.tombstone).toBe(1);
   });
 
   it('refuses without a rate or a valid currency', async () => {
     await setupBudget();
-    // Handlers reject with API errors: plain objects the client shows as is
-    const refusal = (pattern: RegExp) =>
-      expect.objectContaining({
-        type: 'APIError',
-        message: expect.stringMatching(pattern),
-      });
-    await expect(previewCurrencySwitch({ toCurrency: 'CAD' })).rejects.toEqual(
-      refusal(/already in CAD/),
-    );
     await expect(
-      switchBudgetCurrency({ toCurrency: 'USD', accountCurrencies: {} }),
-    ).rejects.toEqual(refusal(/No exchange rate from \w+ to USD/));
-    await expect(
-      switchBudgetCurrency({
+      setDefaultCurrency({
         toCurrency: 'EUR',
         accountCurrencies: { chq: 'XYZ' },
+        keepBudgets: true,
       }),
-    ).rejects.toEqual(refusal(/Invalid currency/));
+    ).rejects.toEqual(
+      expect.objectContaining({
+        type: 'APIError',
+        message: expect.stringMatching(/Invalid currency/),
+      }),
+    );
+    await expect(
+      setDefaultCurrency({
+        toCurrency: 'CAD',
+        accountCurrencies: {},
+        keepBudgets: true,
+      }),
+    ).rejects.toEqual(
+      expect.objectContaining({
+        message: expect.stringMatching(/already CAD/),
+      }),
+    );
+    await expect(
+      setDefaultCurrency({
+        toCurrency: 'GBP',
+        accountCurrencies: { chq: 'CAD' },
+        keepBudgets: true,
+      }),
+    ).rejects.toEqual(
+      expect.objectContaining({
+        message: expect.stringMatching(/No exchange rate/),
+      }),
+    );
     // Nothing changed
     expect(await getPref('defaultCurrencyCode')).toBe('CAD');
-    expect((await getTransactions()).c1).toEqual({
-      amount: -10000,
-      mc: null,
-    });
   });
 });

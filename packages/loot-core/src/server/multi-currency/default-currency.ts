@@ -1,15 +1,15 @@
-// [fork:mc D-016] Changing the budget currency (for example CAD to EUR)
-// while keeping the budget's history.
+// [fork:mc D-017] Changing the default currency of a budget file (for
+// example CAD to EUR) without changing past budgets.
 //
-// Every account gets a currency for after the switch. Each transaction keeps
-// its value in that currency (`mc_amount`, or `amount` when it is the new
-// budget currency) and gets a new budget amount at its own date's rate.
-// Accounts recorded with the docs workaround take their amounts from the
-// notes. Budgets, goals and held amounts are converted at each month's
-// average rate, except the part of a budget its category spent, which takes
-// the rate of that spending; rule and schedule amounts at today's rate.
-// Rules written for the workaround would convert amounts a second time, so
-// they are deleted.
+// Only what uses the default currency follows it: accounts and budgets with
+// a currency of their own keep it. The change can keep budgets without a
+// currency in the old one up to the current month (`mcCurrencyPeriods`),
+// and can give accounts without one a currency first: the old one, or
+// another such as EUR for an account recorded with the docs workaround,
+// whose amounts are then read from its notes. Every transaction's `amount`
+// becomes its value in the new default currency at the rate of its month;
+// values counted in a budget of another currency (`mc_budget_amount`) keep
+// what the budget counted, so past months show what they showed before.
 import * as db from '#server/db';
 import { APIError } from '#server/errors';
 import { resetFormulaPreferencesCache } from '#server/formulas/bootstrap';
@@ -19,16 +19,25 @@ import {
   ruleModel,
   updateRule,
 } from '#server/transactions/transaction-rules';
-import { getCurrency, getDecimalPlaces } from '#shared/currencies';
+import { getCurrency } from '#shared/currencies';
 import * as monthUtils from '#shared/months';
 import {
   convertMinorUnits,
-  isCurrencyCode,
+  getBudgetCurrencyAt,
+  MC_PREF_CURRENCY_PERIODS,
   roundHalfAwayFromZero,
 } from '#shared/multi-currency';
+import type { CurrencyPeriod } from '#shared/multi-currency';
 
 import { getWorkaroundNoteCurrency, parseWorkaroundNote } from './accounts';
-import { getMultiCurrencyContext, getRatesAt } from './rates';
+import { isSupportedCurrency } from './budget-currency';
+import {
+  createMonthRateLookup,
+  ensureBudgetFactorRates,
+  getBudgetTable,
+  loadBudgetCurrencies,
+} from './month-rates';
+import { ensureRates, getMultiCurrencyContext, getRatesAt } from './rates';
 
 type AccountRow = {
   id: string;
@@ -42,23 +51,16 @@ type AccountRow = {
 type TransactionRow = {
   id: string;
   account: string;
+  category: string | null;
   amount: number;
   mc_amount: number | null;
+  mc_budget_amount: number | null;
   date: number;
   notes: string | null;
-  category: string | null;
   transfer_id: string | null;
   is_parent: 0 | 1;
   is_child: 0 | 1;
   parent_id: string | null;
-};
-
-type BudgetRow = {
-  id: string;
-  month: number;
-  category: string;
-  amount: number | null;
-  goal: number | null;
 };
 
 type RuleJS = {
@@ -69,70 +71,61 @@ type RuleJS = {
   actions: Array<Record<string, unknown>>;
 };
 
-/** A transaction after the switch */
-type NewValue = {
-  /** In the account's new currency */
-  value: number;
-  /** In the new budget currency */
-  amount: number;
-  /** The value was read from a workaround note */
-  isFromNote: boolean;
-};
-
-export type SwitchSuggestionReason =
+export type SuggestionReason =
   | 'current'
   | 'account-note'
   | 'account-name'
   | 'transaction-notes';
 
-export type SwitchAccountPreview = {
+export type DefaultCurrencyAccount = {
   id: string;
   name: string;
   closed: boolean;
   offbudget: boolean;
-  /** The account's currency now */
-  currency: string;
-  /** Suggested currency after the switch, and why */
+  /** The account's own currency, null when it uses the default one */
+  currency: string | null;
+  /** For an account without one: the currency it most likely holds */
   suggested: string;
-  reason: SwitchSuggestionReason;
+  reason: SuggestionReason;
   /** Transactions, counting a split once */
   transactions: number;
   /** Transactions whose notes carry an amount in the suggested currency */
   notedTransactions: number;
 };
 
-export type SwitchPreview = {
+export type DefaultCurrencyPreview = {
   fromCurrency: string;
   toCurrency: string;
-  /** What 1 unit of the current budget currency is worth today */
+  /** What 1 unit of the current default currency is worth today */
   todayRate: number | null;
-  accounts: SwitchAccountPreview[];
-  /** Transactions, counting a split once */
-  transactions: number;
-  firstDate: string | null;
-  budgetMonths: number;
-  /** Rules (and schedules) with amounts, converted at today's rate */
-  rulesWithAmounts: number;
-  /** Rules written for the docs workaround; deleted by the switch */
-  workaroundRules: Array<{ id: string; accounts: string[] }>;
+  accounts: DefaultCurrencyAccount[];
+  /** Budgets without a currency of their own, up to `keepUntil` */
+  unsetBudgets: number;
+  /** The last month budgets without a currency can keep the old one for */
+  keepUntil: string;
+  /**
+   * Rules written for the docs workaround. One goes when every account it
+   * applies to ends up in another currency than the old default.
+   */
+  workaroundRules: Array<{
+    id: string;
+    accountIds: string[];
+    accounts: string[];
+  }>;
 };
 
-export type SwitchResult = {
+export type DefaultCurrencyResult = {
+  accounts: number;
   transactions: number;
-  budgets: number;
   rules: number;
   deletedRules: number;
 };
 
 const TRANSACTION_FIELDS =
-  'id, account, amount, mc_amount, date, notes, category, transfer_id, is_parent, is_child, parent_id';
+  'id, account, category, amount, mc_amount, mc_budget_amount, date, notes, transfer_id, is_parent, is_child, parent_id';
 
 const ACCOUNT_NOTE_CURRENCY = /#currency:([A-Z]{3})\b/;
 const ACCOUNT_NAME_CURRENCY = /\(([A-Z]{3})\)\s*$/;
-
-function isSupportedCurrency(code: string | null | undefined): code is string {
-  return isCurrencyCode(code) && getCurrency(code).code === code;
-}
 
 function sum(values: number[]): number {
   return values.reduce((total, value) => total + value, 0);
@@ -285,7 +278,7 @@ function suggestCurrency(
   fromCurrency: string,
   accountNote: string | null,
   transactions: TransactionRow[],
-): { suggested: string; reason: SwitchSuggestionReason; noted: number } {
+): { suggested: string; reason: SuggestionReason; noted: number } {
   const countNoted = (code: string) =>
     transactions.filter(row => getWorkaroundNoteCurrency(row.notes) === code)
       .length;
@@ -333,17 +326,17 @@ function suggestCurrency(
 }
 
 async function getContext(toCurrency: string) {
-  const { enabled, budgetCurrency } = await getMultiCurrencyContext();
-  if (!enabled) {
+  const context = await getMultiCurrencyContext();
+  if (!context.enabled) {
     throw APIError('Multi-currency is not enabled');
   }
   if (!isSupportedCurrency(toCurrency)) {
     throw APIError(`Invalid currency: ${JSON.stringify(toCurrency)}`);
   }
-  if (toCurrency === budgetCurrency) {
-    throw APIError(`The budget is already in ${toCurrency}`);
+  if (toCurrency === context.budgetCurrency) {
+    throw APIError(`The default currency is already ${toCurrency}`);
   }
-  return { fromCurrency: budgetCurrency };
+  return context;
 }
 
 function groupByAccount(transactions: TransactionRow[]) {
@@ -356,20 +349,24 @@ function groupByAccount(transactions: TransactionRow[]) {
   return byAccount;
 }
 
-export async function previewCurrencySwitch({
+export async function previewDefaultCurrency({
   toCurrency,
 }: {
   toCurrency: string;
-}): Promise<SwitchPreview> {
-  const { fromCurrency } = await getContext(toCurrency);
-  const [accounts, transactions, rules, accountNotes, budgetMonths] =
+}): Promise<DefaultCurrencyPreview> {
+  const context = await getContext(toCurrency);
+  const fromCurrency = context.budgetCurrency;
+  const keepUntil = monthUtils.currentMonth();
+  const [accounts, transactions, rules, accountNotes, budgetRows] =
     await Promise.all([
       loadAccounts(),
       loadTransactions(),
       loadRules(),
       loadAccountNotes(),
       db.all<{ month: number }>(
-        'SELECT month FROM zero_budgets UNION SELECT month FROM reflect_budgets',
+        `SELECT month FROM ${getBudgetTable()}
+          WHERE mc_currency IS NULL AND month <= ?`,
+        [parseInt(keepUntil.replace('-', ''))],
       ),
     ]);
   const today = monthUtils.currentDay();
@@ -379,10 +376,6 @@ export async function previewCurrencySwitch({
   const counted = transactions.filter(row => !row.is_child);
   const byAccount = groupByAccount(counted);
   const accountNames = new Map(accounts.map(row => [row.id, row.name]));
-  const first = counted.reduce<number | null>(
-    (min, row) => (min === null || row.date < min ? row.date : min),
-    null,
-  );
 
   return {
     fromCurrency,
@@ -403,185 +396,156 @@ export async function previewCurrencySwitch({
           name: account.name,
           closed: account.closed === 1,
           offbudget: account.offbudget === 1,
-          currency: account.mc_currency || fromCurrency,
+          currency: account.mc_currency,
           suggested,
           reason,
           transactions: rows.length,
           notedTransactions: noted,
         };
       }),
-    transactions: counted.length,
-    firstDate: first === null ? null : db.fromDateRepr(first),
-    budgetMonths: new Set(budgetMonths.map(row => row.month)).size,
-    rulesWithAmounts: rules.filter(
-      rule => !isWorkaroundRule(rule) && convertRuleAmounts(rule, x => x),
-    ).length,
+    unsetBudgets: budgetRows.length,
+    keepUntil,
     workaroundRules: rules.filter(isWorkaroundRule).map(rule => ({
       id: rule.id,
+      accountIds: ruleAccounts(rule),
       accounts: ruleAccounts(rule).map(id => accountNames.get(id) ?? id),
     })),
   };
 }
 
-function monthOf(month: number): string {
-  const text = String(month);
-  return `${text.slice(0, 4)}-${text.slice(4, 6)}`;
-}
-
-/** The days of a month that have happened, up to today. */
-function daysOfMonth(month: string, today: string): string[] {
-  const first = `${month}-01`;
-  if (first > today) {
-    return [];
-  }
-  const last = monthUtils.lastDayOfMonth(first);
-  return monthUtils.dayRangeInclusive(first, last > today ? today : last);
-}
+/** Value and budget values of a transaction after the change */
+type NewValue = {
+  /** In the account's currency afterwards */
+  value: number;
+  /** In the new default currency */
+  amount: number;
+  isFromNote: boolean;
+};
 
 /**
- * Converts the budget's history to `toCurrency`. `accountCurrencies` gives
- * each account's currency after the switch; accounts left out keep theirs.
+ * Changes the default currency to `toCurrency`. `accountCurrencies` gives
+ * accounts a currency first (an account without one that is left out
+ * follows the new default, keeping its numbers); with `keepBudgets`,
+ * budgets without a currency keep the old one up to the current month.
  */
-export async function switchBudgetCurrency({
+export async function setDefaultCurrency({
   toCurrency,
   accountCurrencies,
+  keepBudgets,
 }: {
   toCurrency: string;
   accountCurrencies: Record<string, string>;
-}): Promise<SwitchResult> {
-  const { fromCurrency } = await getContext(toCurrency);
+  keepBudgets: boolean;
+}): Promise<DefaultCurrencyResult> {
+  const context = await getContext(toCurrency);
+  const fromCurrency = context.budgetCurrency;
   for (const code of Object.values(accountCurrencies)) {
     if (!isSupportedCurrency(code)) {
       throw APIError(`Invalid currency: ${JSON.stringify(code)}`);
     }
   }
 
-  const [
-    accounts,
-    transactions,
-    rules,
-    zeroBudgets,
-    reflectBudgets,
-    held,
-    reportCurrency,
-    incomeCategories,
-  ] = await Promise.all([
+  const [accounts, transactions, rules, reportCurrency] = await Promise.all([
     loadAccounts(),
     loadTransactions(),
     loadRules(),
-    db.all<BudgetRow>(
-      'SELECT id, month, category, amount, goal FROM zero_budgets',
-    ),
-    db.all<BudgetRow>(
-      'SELECT id, month, category, amount, goal FROM reflect_budgets',
-    ),
-    db.all<{ id: string; buffered: number | null }>(
-      'SELECT id, buffered FROM zero_budget_months',
-    ),
     db.first<{ value: string | null }>(
       "SELECT value FROM preferences WHERE id = 'mcReportCurrency'",
     ),
-    db.all<{ id: string }>('SELECT id FROM categories WHERE is_income = 1'),
   ]);
+  const budgets = await loadBudgetCurrencies();
 
-  const oldCurrency = new Map(
-    accounts.map(row => [row.id, row.mc_currency || fromCurrency]),
-  );
-  const newCurrency = new Map(
-    accounts.map(row => [
-      row.id,
-      accountCurrencies[row.id] ?? (row.mc_currency || fromCurrency),
-    ]),
-  );
+  const keepUntil = monthUtils.currentMonth();
+  const lastPeriod = context.periods[context.periods.length - 1];
+  const periods: CurrencyPeriod[] =
+    keepBudgets && !(lastPeriod && lastPeriod.until >= keepUntil)
+      ? [...context.periods, { currency: fromCurrency, until: keepUntil }]
+      : context.periods;
+  const budgetCurrencyBefore = (category: string, month: string) =>
+    budgets.get(`${month}:${category}`) ??
+    getBudgetCurrencyAt(month, context.periods, fromCurrency);
+  const budgetCurrencyAfter = (category: string, month: string) =>
+    budgets.get(`${month}:${category}`) ??
+    getBudgetCurrencyAt(month, periods, toCurrency);
+
+  const accountById = new Map(accounts.map(row => [row.id, row]));
   const before = (accountId: string) =>
-    oldCurrency.get(accountId) ?? fromCurrency;
+    accountById.get(accountId)?.mc_currency || fromCurrency;
   const after = (accountId: string) =>
-    newCurrency.get(accountId) ?? before(accountId);
+    accountCurrencies[accountId] ??
+    (accountById.get(accountId)?.mc_currency || toCurrency);
+  // An account without a currency that wasn't given one keeps its numbers
+  const followsDefault = (accountId: string) =>
+    !accountById.get(accountId)?.mc_currency &&
+    accountCurrencies[accountId] === undefined;
+  const isOffBudget = (accountId: string) =>
+    accountById.get(accountId)?.offbudget === 1;
   const dateOf = (row: TransactionRow) => db.fromDateRepr(row.date);
-  const today = monthUtils.currentDay();
 
-  // The rates needed, by currency pair
-  const pairDates = new Map<string, Set<string>>();
-  const need = (from: string, to: string, date: string) => {
-    if (from !== to) {
-      const key = `${from}:${to}`;
-      pairDates.set(key, (pairDates.get(key) ?? new Set()).add(date));
-    }
-  };
-  for (const row of transactions) {
-    const date = dateOf(row);
-    const was = before(row.account);
-    const will = after(row.account);
-    if (was !== fromCurrency && row.mc_amount == null) {
-      need(fromCurrency, was, date);
-    }
-    if (
-      will !== was &&
-      (row.is_child || parseWorkaroundNote(row.notes, will) === null)
-    ) {
-      need(was, will, date);
-    }
-    need(will, toCurrency, date);
-  }
-  const budgetMonths = [
-    ...new Set(
-      [...zeroBudgets, ...reflectBudgets]
-        .map(row => monthOf(row.month))
-        .concat(held.map(row => row.id)),
-    ),
-  ];
-  need(fromCurrency, toCurrency, today);
-  for (const month of budgetMonths) {
-    for (const day of daysOfMonth(month, today)) {
-      need(fromCurrency, toCurrency, day);
+  // Fetch each pair's rates as one range before converting month by month
+  const firstDate = transactions.reduce<number | null>(
+    (min, row) => (min === null || row.date < min ? row.date : min),
+    null,
+  );
+  if (firstDate !== null) {
+    const firstMonth = monthUtils.monthFromDate(db.fromDateRepr(firstDate));
+    const monthStarts = monthUtils
+      .rangeInclusive(firstMonth, monthUtils.currentMonth())
+      .map(month => `${month}-01`);
+    const currencies = new Set([
+      fromCurrency,
+      ...accounts.map(row => after(row.id)),
+      ...budgets.values(),
+    ]);
+    for (const currency of currencies) {
+      if (currency !== toCurrency) {
+        await ensureRates(currency, toCurrency, monthStarts);
+      }
     }
   }
-
-  const rates = new Map<string, Record<string, number | null>>();
-  for (const [key, dates] of pairDates) {
-    const [from, to] = key.split(':');
-    const found = await getRatesAt(from, to, [...dates]);
-    if (Object.values(found).some(rate => rate == null)) {
+  const lookup = createMonthRateLookup();
+  const convert = async (
+    amount: number,
+    from: string,
+    to: string,
+    date: string,
+  ) => {
+    if (from === to) {
+      return amount;
+    }
+    const converted = await lookup.convert(amount, date, from, to);
+    if (converted == null) {
       throw APIError(
         `No exchange rate from ${from} to ${to} is available. Turn on automatic rate downloads or add a rate first.`,
       );
     }
-    rates.set(key, found);
-  }
-  const convert = (amount: number, from: string, to: string, date: string) => {
-    if (from === to) {
-      return amount;
-    }
-    const rate = rates.get(`${from}:${to}`)?.[date];
-    if (rate == null) {
-      throw new Error(`No ${from} to ${to} rate for ${date}`);
-    }
-    return convertMinorUnits(amount, rate, from, to);
+    return converted;
   };
   // A transaction's value in its account's current currency
-  const storedValue = (row: TransactionRow) => {
-    const was = before(row.account);
-    if (was === fromCurrency) {
-      return row.amount;
-    }
-    return row.mc_amount ?? convert(row.amount, fromCurrency, was, dateOf(row));
-  };
+  const storedValue = (row: TransactionRow) =>
+    before(row.account) === fromCurrency ? row.amount : row.mc_amount;
 
-  // Transactions and split parents: the value in the account's new
-  // currency, then in the new budget currency
+  // Transactions and split parents: the value in the account's currency
+  // afterwards, then in the new default currency
   const values = new Map<string, NewValue>();
   const byId = new Map(transactions.map(row => [row.id, row]));
   for (const row of transactions.filter(row => !row.is_child)) {
     const date = dateOf(row);
     const was = before(row.account);
     const will = after(row.account);
-    const stored = storedValue(row);
-    const noted = will !== was ? parseWorkaroundNote(row.notes, will) : null;
+    const stored =
+      storedValue(row) ?? (await convert(row.amount, fromCurrency, was, date));
+    const noted =
+      will !== was && !followsDefault(row.account)
+        ? parseWorkaroundNote(row.notes, will)
+        : null;
     const value =
-      will === was ? stored : (noted ?? convert(stored, was, will, date));
+      will === was || followsDefault(row.account)
+        ? stored
+        : (noted ?? (await convert(stored, was, will, date)));
     values.set(row.id, {
       value,
-      amount: convert(value, will, toCurrency, date),
+      amount: await convert(value, will, toCurrency, date),
       isFromNote: noted !== null,
     });
   }
@@ -604,30 +568,36 @@ export async function switchBudgetCurrency({
     const date = dateOf(parentRow);
     const was = before(parentRow.account);
     const will = after(parentRow.account);
-    const stored = children.map(storedValue);
+    const stored = await Promise.all(
+      children.map(
+        async child =>
+          storedValue(child) ??
+          (await convert(child.amount, fromCurrency, was, date)),
+      ),
+    );
     let childValues: number[];
-    if (will === was) {
+    if (will === was || followsDefault(parentRow.account)) {
       childValues = stored;
     } else if (sum(stored) !== 0) {
       childValues = allocate(parent.value, stored);
     } else {
       childValues = balance(
-        stored.map(value => convert(value, was, will, date)),
+        await Promise.all(stored.map(value => convert(value, was, will, date))),
         parent.value,
       );
     }
-    children.forEach((child, index) => {
+    for (const [index, child] of children.entries()) {
       values.set(child.id, {
         value: childValues[index],
-        amount: convert(childValues[index], will, toCurrency, date),
+        amount: await convert(childValues[index], will, toCurrency, date),
         isFromNote: parent.isFromNote,
       });
-    });
+    }
   }
 
   // Transfers mirror each other. The side that decides: one in the new
-  // budget currency, then one read from a workaround note, then the paying
-  // side.
+  // default currency, then one read from a workaround note, then the
+  // paying side.
   const rank = (row: TransactionRow, value: NewValue) => [
     after(row.account) === toCurrency ? 1 : 0,
     value.isFromNote ? 1 : 0,
@@ -657,7 +627,7 @@ export async function switchBudgetCurrency({
     }
   }
 
-  // A split's budget amount is the sum of its children's
+  // A split's amount is the sum of its children's
   for (const [parentId, children] of childrenOf) {
     const parent = values.get(parentId);
     if (parent) {
@@ -667,83 +637,99 @@ export async function switchBudgetCurrency({
     }
   }
 
-  // What each category spent (or received) per month, before and after, as
-  // the budget sums it: on-budget accounts only
-  const isOnBudget = new Map(
-    accounts.map(row => [row.id, row.offbudget === 0]),
-  );
-  const spending = new Map<string, { before: number; after: number }>();
+  // What each budget counted keeps being counted: in a budget that stays in
+  // its currency, the value it had; otherwise the value in the new one
+  const budgetValues = new Map<string, number | null>();
   for (const row of transactions) {
     const next = values.get(row.id);
-    if (row.category && next && isOnBudget.get(row.account)) {
-      const key = `${Math.floor(row.date / 100)}-${row.category}`;
-      const sums = spending.get(key) ?? { before: 0, after: 0 };
-      sums.before += row.amount;
-      sums.after += next.amount;
-      spending.set(key, sums);
+    if (!next) {
+      continue;
     }
-  }
-  const isIncome = new Set(incomeCategories.map(row => row.id));
-
-  // Budgets, goals and held money at each month's average rate
-  const budgetRates = rates.get(`${fromCurrency}:${toCurrency}`) ?? {};
-  const monthRate = new Map<string, number>();
-  for (const month of budgetMonths) {
-    const found = daysOfMonth(month, today)
-      .map(day => budgetRates[day])
-      .filter((rate): rate is number => rate != null);
-    monthRate.set(
-      month,
-      found.length > 0
-        ? sum(found) / found.length
-        : (budgetRates[today] as number),
+    if (!row.category || row.is_parent || isOffBudget(row.account)) {
+      budgetValues.set(row.id, null);
+      continue;
+    }
+    const month = monthUtils.monthFromDate(dateOf(row));
+    const was = budgetCurrencyBefore(row.category, month);
+    const will = budgetCurrencyAfter(row.category, month);
+    if (will === toCurrency) {
+      budgetValues.set(row.id, null);
+      continue;
+    }
+    const counted =
+      row.mc_budget_amount ?? (was === fromCurrency ? row.amount : null);
+    budgetValues.set(
+      row.id,
+      will === was && counted != null
+        ? counted
+        : await convert(next.value, after(row.account), will, dateOf(row)),
     );
   }
-  const atMonth = (amount: number | null, month: string) =>
-    amount == null || amount === 0
-      ? amount
-      : convertMinorUnits(
-          amount,
-          monthRate.get(month) as number,
+
+  // Money held for next month is in the default currency, like To Budget:
+  // in a month whose budgets keep the old currency it converts, otherwise
+  // it keeps its number like those budgets do
+  const heldUpdates: Array<{ id: string; buffered: number }> = [];
+  if (keepBudgets) {
+    const held = await db.all<{ id: string; buffered: number }>(
+      `SELECT id, buffered FROM zero_budget_months
+        WHERE buffered IS NOT NULL AND buffered != 0 AND id <= ?`,
+      [keepUntil],
+    );
+    for (const row of held) {
+      heldUpdates.push({
+        id: row.id,
+        buffered: await convert(
+          row.buffered,
           fromCurrency,
           toCurrency,
-        );
-
-  // The part of a budget its category used (spent, or received for income)
-  // takes the rate of those transactions instead, so a budget that was
-  // exactly used still is. Far-off rates (refunds netting out a purchase)
-  // fall back to the month's average.
-  const minorUnits =
-    10 ** (getDecimalPlaces(toCurrency) - getDecimalPlaces(fromCurrency));
-  const convertBudget = (row: BudgetRow) => {
-    const month = monthOf(row.month);
-    const sums = spending.get(`${row.month}-${row.category}`);
-    if (!row.amount || row.amount < 0 || !sums) {
-      return atMonth(row.amount, month);
+          `${row.id}-01`,
+        ),
+      });
     }
-    const sign = isIncome.has(row.category) ? 1 : -1;
-    const used = sign * sums.before;
-    const part = Math.min(Math.max(used, 0), row.amount);
-    const average = (monthRate.get(month) as number) * minorUnits;
-    const usedRate = part > 0 ? sums.after / sums.before : 0;
-    if (part === 0 || Math.abs(usedRate / average - 1) > 0.1) {
-      return atMonth(row.amount, month);
-    }
-    return roundHalfAwayFromZero(
-      part * usedRate + (row.amount - part) * average,
-    );
-  };
+  }
+  await lookup.flush();
 
-  // Rule and schedule amounts at today's rate
-  const todayRate = budgetRates[today] as number;
+  // Rules of accounts that get another currency than they had: amounts at
+  // today's rate. Rules written for the docs workaround would convert
+  // amounts again, so they go.
+  const changedAccounts = new Set(
+    accounts
+      .filter(
+        row => !followsDefault(row.id) && after(row.id) !== before(row.id),
+      )
+      .map(row => row.id),
+  );
+  const today = monthUtils.currentDay();
   const convertedRules: RuleJS[] = [];
   const workaroundRules: RuleJS[] = [];
   for (const rule of rules) {
+    const ruleAccountIds = ruleAccounts(rule);
     if (isWorkaroundRule(rule)) {
-      workaroundRules.push(rule);
-    } else if (
+      if (
+        ruleAccountIds.length > 0 &&
+        ruleAccountIds.every(id => after(id) !== fromCurrency)
+      ) {
+        workaroundRules.push(rule);
+      }
+      continue;
+    }
+    const currencies = new Set(ruleAccountIds.map(id => after(id)));
+    if (
+      ruleAccountIds.length === 0 ||
+      !ruleAccountIds.every(id => changedAccounts.has(id)) ||
+      currencies.size !== 1
+    ) {
+      continue;
+    }
+    const [target] = currencies;
+    const source = before(ruleAccountIds[0]);
+    const rates = await getRatesAt(source, target, [today]);
+    const rate = rates[today];
+    if (
+      rate != null &&
       convertRuleAmounts(rule, amount =>
-        convertMinorUnits(amount, todayRate, fromCurrency, toCurrency),
+        convertMinorUnits(amount, rate, source, target),
       )
     ) {
       convertedRules.push(rule);
@@ -761,12 +747,15 @@ export async function switchBudgetCurrency({
       ? 'false'
       : 'true',
   };
+  if (keepBudgets) {
+    prefs[MC_PREF_CURRENCY_PERIODS] = JSON.stringify(periods);
+  }
   if (reportCurrency?.value === toCurrency) {
     prefs.mcReportCurrency = '';
   }
 
+  let updatedAccounts = 0;
   let updatedTransactions = 0;
-  let updatedBudgets = 0;
   let deletedRules = 0;
   await batchMessages(async () => {
     for (const account of accounts) {
@@ -777,6 +766,7 @@ export async function switchBudgetCurrency({
           id: account.id,
           mc_currency: mcCurrency,
         });
+        updatedAccounts++;
       }
     }
     for (const row of transactions) {
@@ -785,40 +775,22 @@ export async function switchBudgetCurrency({
         continue;
       }
       const mcAmount = after(row.account) === toCurrency ? null : next.value;
-      if (next.amount !== row.amount || mcAmount !== row.mc_amount) {
+      const budgetValue = budgetValues.get(row.id) ?? null;
+      if (
+        next.amount !== row.amount ||
+        mcAmount !== row.mc_amount ||
+        budgetValue !== row.mc_budget_amount
+      ) {
         await db.updateTransaction({
           id: row.id,
           amount: next.amount,
           mc_amount: mcAmount,
+          mc_budget_amount: budgetValue,
         });
         // Counted like the preview: a split once
         if (!row.is_child) {
           updatedTransactions++;
         }
-      }
-    }
-    for (const [table, rows] of [
-      ['zero_budgets', zeroBudgets],
-      ['reflect_budgets', reflectBudgets],
-    ] as const) {
-      for (const row of rows) {
-        if (!row.amount && !row.goal) {
-          continue;
-        }
-        await db.update(table, {
-          id: row.id,
-          amount: convertBudget(row),
-          goal: atMonth(row.goal, monthOf(row.month)),
-        });
-        updatedBudgets++;
-      }
-    }
-    for (const row of held) {
-      if (row.buffered) {
-        await db.update('zero_budget_months', {
-          id: row.id,
-          buffered: atMonth(row.buffered, row.id),
-        });
       }
     }
     for (const rule of convertedRules) {
@@ -833,15 +805,19 @@ export async function switchBudgetCurrency({
         deletedRules++;
       }
     }
+    for (const update of heldUpdates) {
+      await db.update('zero_budget_months', update);
+    }
     for (const [id, value] of Object.entries(prefs)) {
       await db.update('preferences', { id, value });
     }
   });
   resetFormulaPreferencesCache();
+  await ensureBudgetFactorRates();
 
   return {
+    accounts: updatedAccounts,
     transactions: updatedTransactions,
-    budgets: updatedBudgets,
     rules: convertedRules.length,
     deletedRules,
   };

@@ -15,20 +15,34 @@
 //   `mc-recompute-pending` runs with a rate.
 // - Moved to (or written on) a budget-currency account: `mc_amount` cleared.
 // Splits are rounded so children still add up to the parent exactly.
+//
+// [fork:mc D-017] Conversions use the rate of the transaction's month (the
+// month's average, see `month-rates.ts`). A categorized transaction whose
+// budget is in another currency than the default one also gets
+// `mc_budget_amount`, its value in that currency.
 import * as db from '#server/db';
 import { batchMessages } from '#server/sync';
-import { isForeignCurrencyAccount } from '#shared/multi-currency';
 import type { TransactionEntity } from '#types/models';
 
-import { convertAmount, ensureRates, getMultiCurrencyContext } from './rates';
+import {
+  createMonthRateLookup,
+  getBudgetCurrencyOf,
+  loadAccountCurrencies,
+  loadBudgetCurrencies,
+} from './month-rates';
+import type { BudgetCurrencies, MonthRateLookup } from './month-rates';
+import { getMultiCurrencyContext } from './rates';
+import type { MultiCurrencyContext } from './rates';
 
 type Change = Partial<TransactionEntity>;
 
 type StoredRow = {
   id: string;
   account: string;
+  category: string | null;
   amount: number;
   mc_amount: number | null;
+  mc_budget_amount: number | null;
   date: string;
   transfer_id: string | null;
   is_parent: boolean;
@@ -39,8 +53,10 @@ type StoredRow = {
 type RawRow = {
   id: string;
   account: string;
+  category: string | null;
   amount: number;
   mc_amount: number | null;
+  mc_budget_amount: number | null;
   date: number;
   transfer_id: string | null;
   is_parent: 0 | 1;
@@ -49,7 +65,7 @@ type RawRow = {
 };
 
 const ROW_FIELDS =
-  'id, account, amount, mc_amount, date, transfer_id, is_parent, is_child, parent_id';
+  'id, account, category, amount, mc_amount, mc_budget_amount, date, transfer_id, is_parent, is_child, parent_id';
 
 function toStoredRow(row: RawRow): StoredRow {
   return {
@@ -80,14 +96,44 @@ async function loadRows(
 export async function loadForeignAccounts(
   budgetCurrency: string,
 ): Promise<Map<string, string>> {
-  const rows = await db.all<Pick<db.DbAccount, 'id' | 'mc_currency'>>(
-    'SELECT id, mc_currency FROM accounts WHERE mc_currency IS NOT NULL AND tombstone = 0',
+  const accounts = await loadAccountCurrencies(budgetCurrency);
+  return new Map([...accounts].filter(([, code]) => code !== budgetCurrency));
+}
+
+/** [fork:mc D-017] What a write needs to know about currencies. */
+type CurrencySetup = {
+  context: MultiCurrencyContext;
+  foreign: Map<string, string>;
+  budgets: BudgetCurrencies;
+  offBudget: Set<string>;
+  lookup: MonthRateLookup;
+};
+
+/** Null when nothing in the budget file is in another currency. */
+async function loadCurrencySetup(): Promise<CurrencySetup | null> {
+  const context = await getMultiCurrencyContext();
+  if (!context.enabled) {
+    return null;
+  }
+  const foreign = await loadForeignAccounts(context.budgetCurrency);
+  const budgets = await loadBudgetCurrencies();
+  if (
+    foreign.size === 0 &&
+    budgets.size === 0 &&
+    context.periods.length === 0
+  ) {
+    return null;
+  }
+  const offBudget = await db.all<Pick<db.DbAccount, 'id'>>(
+    'SELECT id FROM accounts WHERE offbudget = 1 AND tombstone = 0',
   );
-  return new Map(
-    rows
-      .filter(row => isForeignCurrencyAccount(row, budgetCurrency))
-      .map(row => [row.id, row.mc_currency as string]),
-  );
+  return {
+    context,
+    foreign,
+    budgets,
+    offBudget: new Set(offBudget.map(row => row.id)),
+    lookup: createMonthRateLookup(),
+  };
 }
 
 function hasKey<K extends string>(
@@ -120,14 +166,12 @@ export async function prepareMultiCurrencyChanges({
   if (added.length === 0 && updated.length === 0) {
     return [];
   }
-  const { enabled, budgetCurrency } = await getMultiCurrencyContext();
-  if (!enabled) {
+  const setup = await loadCurrencySetup();
+  if (!setup) {
     return [];
   }
-  const foreign = await loadForeignAccounts(budgetCurrency);
-  if (foreign.size === 0) {
-    return [];
-  }
+  const { foreign, lookup } = setup;
+  const budgetCurrency = setup.context.budgetCurrency;
 
   const oldById = new Map(
     (
@@ -225,17 +269,7 @@ export async function prepareMultiCurrencyChanges({
     }
   }
 
-  // One range request per currency instead of one per transaction
-  const datesByCurrency = new Map<string, string[]>();
-  for (const plan of plans) {
-    const dates = datesByCurrency.get(plan.currency) ?? [];
-    dates.push(plan.date);
-    datesByCurrency.set(plan.currency, dates);
-  }
-  for (const [currency, dates] of datesByCurrency) {
-    await ensureRates(currency, budgetCurrency, dates);
-  }
-
+  // [fork:mc D-017] At the rate of the transaction's month
   for (const { change, currency, date, derive } of plans) {
     const old = change.id ? oldById.get(change.id) : undefined;
     if (derive === 'amount') {
@@ -245,12 +279,12 @@ export async function prepareMultiCurrencyChanges({
       change.amount =
         mc == null
           ? (change.amount ?? old?.amount ?? 0)
-          : ((await convertAmount(mc, date, currency, budgetCurrency)) ?? 0);
+          : ((await lookup.convert(mc, date, currency, budgetCurrency)) ?? 0);
     } else {
       const amount = hasKey(change, 'amount')
         ? (change.amount as number)
         : (old?.amount ?? 0);
-      change.mc_amount = await convertAmount(
+      change.mc_amount = await lookup.convert(
         amount,
         date,
         budgetCurrency,
@@ -259,7 +293,99 @@ export async function prepareMultiCurrencyChanges({
     }
   }
 
-  return roundSplits({ added, updated, deleted, plans, oldById, foreign });
+  const extra = await roundSplits({
+    added,
+    updated,
+    deleted,
+    plans,
+    oldById,
+    foreign,
+  });
+  await prepareBudgetAmounts(setup, added, updated, oldById);
+  await lookup.flush();
+  return extra;
+}
+
+const BUDGET_FIELDS = [
+  'account',
+  'date',
+  'category',
+  'amount',
+  'mc_amount',
+  'is_parent',
+  'mc_budget_amount',
+];
+
+/**
+ * [fork:mc D-017] A categorized transaction's value in its budget's
+ * currency, when that isn't the default currency: its account amount when
+ * the currencies match, otherwise converted at its month's rate (0 while no
+ * rate is known). Cleared when its budget is in the default currency.
+ */
+async function prepareBudgetAmounts(
+  setup: CurrencySetup,
+  added: Change[],
+  updated: Change[],
+  oldById: Map<string, StoredRow>,
+): Promise<void> {
+  const defaultCurrency = setup.context.budgetCurrency;
+  const changes = [
+    ...added.map(change => ({ change, old: undefined })),
+    ...updated.map(change => ({
+      change,
+      old: change.id ? oldById.get(change.id) : undefined,
+    })),
+  ];
+  for (const { change, old } of changes) {
+    if (old && !BUDGET_FIELDS.some(field => hasKey(change, field))) {
+      continue;
+    }
+    if (!old && change.id && updated.includes(change)) {
+      continue;
+    }
+    const account = change.account ?? old?.account;
+    const date = change.date ?? old?.date;
+    if (!account || !date) {
+      continue;
+    }
+    const category = hasKey(change, 'category')
+      ? change.category
+      : old?.category;
+    const isParent = change.is_parent ?? old?.is_parent;
+    let value: number | null = null;
+    if (category && !isParent && !setup.offBudget.has(account)) {
+      const budgetCurrency = getBudgetCurrencyOf(
+        setup.context,
+        setup.budgets,
+        category,
+        date,
+      );
+      if (budgetCurrency !== defaultCurrency) {
+        const currency = setup.foreign.get(account) ?? defaultCurrency;
+        const amount = hasKey(change, 'amount')
+          ? (change.amount as number)
+          : (old?.amount ?? 0);
+        const mc = hasKey(change, 'mc_amount')
+          ? (change.mc_amount ?? null)
+          : (old?.mc_amount ?? null);
+        const own = currency === defaultCurrency ? amount : mc;
+        value =
+          own == null
+            ? 0
+            : currency === budgetCurrency
+              ? own
+              : ((await setup.lookup.convert(
+                  own,
+                  date,
+                  currency,
+                  budgetCurrency,
+                )) ?? 0);
+      }
+    }
+    if (value !== (old?.mc_budget_amount ?? null)) {
+      change.mc_budget_amount = value;
+    }
+  }
 }
 
 /**
@@ -373,6 +499,7 @@ export async function fillTransferMirrors(
   if (foreign.size === 0) {
     return;
   }
+  const lookup = createMonthRateLookup();
   const sources = await loadRows(transactionIds);
   const partners = (
     await loadRows(
@@ -386,8 +513,7 @@ export async function fillTransferMirrors(
   const updates: Array<{ id: string; mc_amount: number }> = [];
   for (const partner of partners) {
     const currency = foreign.get(partner.account) as string;
-    await ensureRates(currency, budgetCurrency, [partner.date]);
-    const mcAmount = await convertAmount(
+    const mcAmount = await lookup.convert(
       partner.amount,
       partner.date,
       budgetCurrency,
@@ -397,6 +523,7 @@ export async function fillTransferMirrors(
       updates.push({ id: partner.id, mc_amount: mcAmount });
     }
   }
+  await lookup.flush();
   if (updates.length > 0) {
     await batchMessages(async () => {
       for (const update of updates) {

@@ -24,6 +24,8 @@ import {
   ModalTitle,
 } from '#components/common/Modal';
 import { AmountInput } from '#components/mobile/transactions/AmountInput';
+// [fork:mc D-017]
+import { useOwnBudgetCurrencyMenu } from '#components/multi-currency/McBudgetCurrencies';
 import { Notes } from '#components/Notes';
 import { useCategory } from '#hooks/useCategory';
 import { useFeatureFlag } from '#hooks/useFeatureFlag';
@@ -64,6 +66,8 @@ export function EnvelopeBudgetMenuModal({
     envelopeBudget.catBudgeted(categoryId),
   );
   const { data: category } = useCategory(categoryId);
+  // [fork:mc D-017] The budget's currency
+  const currencyMenu = useOwnBudgetCurrencyMenu(categoryId, month);
   const mobileCalculatorEnabled = useFeatureFlag('mobileCalculator');
 
   const notesId = category ? `${category.id}-${month}` : '';
@@ -109,6 +113,9 @@ export function EnvelopeBudgetMenuModal({
           >
             <Text size="extra-large" style={{ fontWeight: 400 }}>
               <Trans>Budgeted</Trans>
+              {/* [fork:mc D-017] */}
+              {currencyMenu?.isOwnCurrency &&
+                ` (${currencyMenu.currencyLabel})`}
             </Text>
             <AmountInput
               value={integerToAmount(budgeted || 0)}
@@ -183,6 +190,9 @@ export function EnvelopeBudgetMenuModal({
               onCopyLastMonthAverage={onCopyLastMonthAverage}
               onSetMonthsAverage={onSetMonthsAverage}
               onApplyBudgetTemplate={onApplyBudgetTemplate}
+              // [fork:mc D-017]
+              currencyLabel={currencyMenu?.currencyLabel}
+              onSetCurrency={currencyMenu?.onSetCurrency}
             />
           )}
         </>

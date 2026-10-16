@@ -40,7 +40,7 @@ export function McReportCurrencySelect({
     .map(item => [
       item.code,
       item.code === budgetCurrency
-        ? t('{{code}} (budget currency)', { code: item.code })
+        ? t('{{code}} (default currency)', { code: item.code })
         : `${item.code} - ${item.name}`,
     ]);
 

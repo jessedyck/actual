@@ -10,7 +10,8 @@ import {
 import { integerToAmount } from '#shared/util';
 import type { TransactionEntity } from '#types/models';
 
-import { convertAmount, ensureRates, getMultiCurrencyContext } from './rates';
+import { createMonthRateLookup } from './month-rates';
+import { getMultiCurrencyContext } from './rates';
 import { loadForeignAccounts } from './transactions';
 
 type ImportedAmounts = Pick<Partial<TransactionEntity>, 'amount' | 'mc_amount'>;
@@ -33,8 +34,8 @@ export async function getImportCurrency(
 
 /**
  * Moves each imported amount to `mc_amount` and converts `amount` at the
- * transaction's date (0 while no rate is known, like any pending
- * conversion). A transaction that already has `mc_amount` keeps both amounts
+ * rate of the transaction's month (0 while no rate is known, like any
+ * pending conversion). A transaction that already has `mc_amount` keeps both amounts
  * as given. Split children only get `mc_amount`: the server derives their
  * budget amounts when they are saved and rounds them to match the parent
  * (D-006).
@@ -47,17 +48,14 @@ export async function readImportedAmounts(
   const pending = normalized.filter(
     ({ trans }) => trans.mc_amount === undefined,
   );
-  await ensureRates(
-    currency,
-    budgetCurrency,
-    pending.map(({ trans }) => trans.date),
-  );
+  // [fork:mc D-017] At the rate of each transaction's month
+  const lookup = createMonthRateLookup();
 
   for (const { trans, subtransactions } of pending) {
     const mcAmount = hundredthsToMinorUnits(trans.amount ?? 0, currency);
     trans.mc_amount = mcAmount;
     trans.amount =
-      (await convertAmount(mcAmount, trans.date, currency, budgetCurrency)) ??
+      (await lookup.convert(mcAmount, trans.date, currency, budgetCurrency)) ??
       0;
 
     for (const sub of subtransactions ?? []) {
@@ -67,6 +65,7 @@ export async function readImportedAmounts(
       }
     }
   }
+  await lookup.flush();
 }
 
 /**

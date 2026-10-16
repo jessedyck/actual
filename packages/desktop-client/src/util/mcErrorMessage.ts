@@ -1,4 +1,4 @@
-// [fork:mc D-016] A readable message for a failed `send`. Handlers reject
+// [fork:mc D-017] A readable message for a failed `send`. Handlers reject
 // with a plain `{ type, message }` object rather than an Error, so
 // `String(error)` would show "[object Object]".
 import { t } from 'i18next';

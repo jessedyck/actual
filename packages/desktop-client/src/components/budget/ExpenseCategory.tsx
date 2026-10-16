@@ -9,6 +9,8 @@ import type {
   CategoryGroupEntity,
 } from '@actual-app/core/types/models';
 
+// [fork:mc D-017]
+import { McBudgetCurrency } from '#components/multi-currency/McBudgetCurrencies';
 import { DropHighlight, useDraggable, useDroppable } from '#components/sort';
 import type {
   DragState,
@@ -104,18 +106,21 @@ export function ExpenseCategory({
 
         <RenderMonths>
           {({ month }) => (
-            <MonthComponent
-              month={month}
-              editing={
-                editingCell &&
-                editingCell.id === cat.id &&
-                editingCell.cell === month
-              }
-              category={cat}
-              onEdit={onEditMonth}
-              onBudgetAction={onBudgetAction}
-              onShowActivity={onShowActivity}
-            />
+            // [fork:mc D-017] Amounts in the budget's currency
+            <McBudgetCurrency categoryId={cat.id} month={month}>
+              <MonthComponent
+                month={month}
+                editing={
+                  editingCell &&
+                  editingCell.id === cat.id &&
+                  editingCell.cell === month
+                }
+                category={cat}
+                onEdit={onEditMonth}
+                onBudgetAction={onBudgetAction}
+                onShowActivity={onShowActivity}
+              />
+            </McBudgetCurrency>
           )}
         </RenderMonths>
       </View>

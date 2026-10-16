@@ -45,6 +45,8 @@ import {
 import { closeBudget } from '#budgetfiles/budgetfilesSlice';
 import { prewarmMonth } from '#components/budget/util';
 import { FinancialText } from '#components/FinancialText';
+// [fork:mc D-017]
+import { McBudgetCurrenciesProvider } from '#components/multi-currency/McBudgetCurrencies';
 import { MobilePageHeader, Page } from '#components/Page';
 import { SyncRefresh } from '#components/SyncRefresh';
 import { useCategories } from '#hooks/useCategories';
@@ -610,18 +612,21 @@ export function BudgetPage() {
           {({ onRefresh }) => (
             <>
               <Banners month={startMonth} onBudgetAction={onBudgetAction} />
-              <BudgetTable
-                // This key forces the whole table rerender when the number
-                // format changes
-                key={`${numberFormat}${hideFraction}`}
-                categoryGroups={categoryGroups}
-                month={startMonth}
-                onShowBudgetSummary={onShowBudgetSummary}
-                onBudgetAction={onBudgetAction}
-                onRefresh={onRefresh}
-                onEditCategoryGroup={onOpenCategoryGroupMenuModal}
-                onEditCategory={onOpenCategoryMenuModal}
-              />
+              {/* [fork:mc D-017] Each category's budget currency */}
+              <McBudgetCurrenciesProvider>
+                <BudgetTable
+                  // This key forces the whole table rerender when the number
+                  // format changes
+                  key={`${numberFormat}${hideFraction}`}
+                  categoryGroups={categoryGroups}
+                  month={startMonth}
+                  onShowBudgetSummary={onShowBudgetSummary}
+                  onBudgetAction={onBudgetAction}
+                  onRefresh={onRefresh}
+                  onEditCategoryGroup={onOpenCategoryGroupMenuModal}
+                  onEditCategory={onOpenCategoryMenuModal}
+                />
+              </McBudgetCurrenciesProvider>
             </>
           )}
         </SyncRefresh>
