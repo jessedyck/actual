@@ -52,12 +52,17 @@ the fork can switch to upstream's own implementation as it lands.
 What was done, newest first. All of it was implemented by an AI assistant;
 [DEVIATIONS.md](DEVIATIONS.md) has the details of every change.
 
+- **2026-10-19** · Review round 3: changing the default currency now
+  stores the old currency on each past budget and on the accounts without
+  one, with the same numbers, instead of a rule about dates (a rule stored
+  by the earlier version is moved onto the budgets when a budget file
+  opens); clearer wording there and in the account currency dialog.
 - **2026-10-19** · Rules and schedules count amounts in the account's
   currency: a 1.900,00 CA$ mortgage schedule on a CAD account keeps posting
   1.900,00 CA$ after the default currency changes, and rules compare, set
   and split that amount. Schedules, rules and their transaction lists show
   amounts in that currency; the balance forecast converts them at each
-  month's rate.
+  month's rate. [4311bdd](https://github.com/jessedyck/actual/commit/4311bdd)
 - **2026-10-19** · Changing an account's currency can convert its amounts
   or keep their numbers (for an account set up in the wrong currency), and
   shows the current currency; the mobile account list can show its totals

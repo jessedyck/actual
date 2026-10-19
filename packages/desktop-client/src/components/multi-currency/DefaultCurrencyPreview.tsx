@@ -1,6 +1,6 @@
-// [fork:mc D-017] What changing the default currency will do: past budgets
-// kept or not, the currency of each account without one, and what else
-// changes.
+// [fork:mc D-017] What changing the default currency will do: whether past
+// budgets and the accounts without a currency get the old one stored on
+// them, with the same numbers, and what else changes.
 import { Trans, useTranslation } from 'react-i18next';
 
 import { Menu } from '@actual-app/components/menu';
@@ -55,6 +55,7 @@ export function DefaultCurrencyPreview({
   const { t } = useTranslation();
   const locale = useLocale();
   const { fromCurrency, toCurrency } = preview;
+  const keepFrom = monthUtils.format(preview.keepFrom, 'MMMM yyyy', locale);
   const keepUntil = monthUtils.format(preview.keepUntil, 'MMMM yyyy', locale);
   const nextMonth = monthUtils.format(
     monthUtils.nextMonth(preview.keepUntil),
@@ -153,16 +154,19 @@ export function DefaultCurrencyPreview({
             htmlFor="mc-default-keep-budgets"
             style={{ userSelect: 'none', fontWeight: 600 }}
           >
-            <Trans count={preview.unsetBudgets}>
-              Keep budgets without a currency of their own in {{ fromCurrency }}{' '}
-              up to {{ keepUntil }} ({{ count: preview.unsetBudgets }})
+            <Trans>
+              Set budgets up to {{ keepUntil }} to {{ fromCurrency }}, with the
+              same numbers
             </Trans>
           </label>
         </View>
         <Paragraph style={{ margin: 0, color: theme.pageTextSubdued }}>
           {keepBudgets ? (
             <Trans>
-              They, and what they counted, stay as they are. From{' '}
+              Every category's budget from {{ keepFrom }} to {{ keepUntil }}{' '}
+              without a currency of its own gets {{ fromCurrency }} stored with
+              it. Its numbers and what it counted don't change, and later
+              changes of the default currency leave it alone. From{' '}
               {{ nextMonth }}, budgets without a currency of their own are in{' '}
               {{ toCurrency }}.
             </Trans>
@@ -200,18 +204,21 @@ export function DefaultCurrencyPreview({
               style={{ userSelect: 'none', fontWeight: 600 }}
             >
               <Trans count={withoutCurrency.length}>
-                Keep accounts without a currency of their own in{' '}
-                {{ fromCurrency }} ({{ count: withoutCurrency.length }})
+                Set accounts without a currency of their own to{' '}
+                {{ fromCurrency }}, with the same amounts (
+                {{ count: withoutCurrency.length }})
               </Trans>
             </label>
           </View>
           <Paragraph style={{ margin: 0, color: theme.pageTextSubdued }}>
             <Trans>
-              An account kept in {{ fromCurrency }} keeps its amounts. One that
-              follows the default keeps its numbers, read as {{ toCurrency }}.
-              One given another currency takes its amounts from notes written by
-              the rule-template workaround, or converts them at each month's
-              rate.
+              This updates every transaction in these accounts: each keeps its
+              amount and gets {{ fromCurrency }} stored with it, so later
+              changes of the default currency leave it alone. You can choose
+              differently for an account below: follow the default (same
+              numbers, read as {{ toCurrency }}), or another currency (amounts
+              from notes written by the rule-template workaround, or converted
+              at each month's rate).
             </Trans>
           </Paragraph>
           <View>

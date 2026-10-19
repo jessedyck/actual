@@ -20,7 +20,7 @@ import {
   loadBudgetCurrencies,
 } from './month-rates';
 import type { BudgetCurrencies, MonthRateLookup } from './month-rates';
-import { getDefaultCurrencyAt, getMultiCurrencyContext } from './rates';
+import { getMultiCurrencyContext } from './rates';
 import type { MultiCurrencyContext } from './rates';
 
 export function isSupportedCurrency(
@@ -189,7 +189,7 @@ export async function setBudgetCurrency({
 
   const budgets = await loadBudgetCurrencies();
   const before = getBudgetCurrencyOf(context, budgets, category, month);
-  const after = currency ?? getDefaultCurrencyAt(context, month);
+  const after = currency ?? context.budgetCurrency;
   const key = `${month}:${category}`;
   if (currency) {
     budgets.set(key, currency);

@@ -1,7 +1,7 @@
 // [fork:mc D-017] Changes the default currency: the one budgets and accounts
 // without a currency of their own use, and To Budget and totals are in.
-// Budgets without one can keep the old currency up to this month, and
-// accounts without one can keep it as their own.
+// Budgets without one up to this month, and accounts without one, can
+// first get the old currency stored on them, with the same numbers.
 import { useRef, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 

@@ -1,8 +1,9 @@
-// [fork:mc D-012] Changes the currency of an existing account. Its
-// transactions either keep their value and get amounts converted into the
-// new currency (from the rule-template workaround's notes, otherwise at
-// each month's rate), or keep their numbers, now read in the new currency,
-// for an account that was set up in the wrong one.
+// [fork:mc D-012] Changes the currency of an existing account. Convert
+// changes every transaction's amount into the new currency (from the
+// rule-template workaround's notes, otherwise at each month's rate) and
+// leaves what the budget counted alone. Keep the numbers changes only the
+// currency, for an account that was set up in the wrong one; what the
+// budget counted is worked out again.
 import { useEffect, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 
@@ -194,11 +195,11 @@ export function AccountCurrencyModal({ accountId }: AccountCurrencyModalProps) {
               <View style={{ gap: 8 }}>
                 <Paragraph style={{ margin: 0 }}>
                   <Trans>
-                    <strong>Convert</strong> if the money really is in{' '}
-                    {{ currency }} now: each transaction keeps its value and its
-                    amount becomes the {{ currency }} equivalent, from its notes
-                    when the rule-template workaround wrote one, else at its
-                    month's rate.
+                    <strong>Convert</strong> changes every transaction's amount
+                    to {{ currency }}, at its month's rate, or from its note
+                    where the rule-template workaround wrote one. What your
+                    budget counted for them stays the same. Use it when the
+                    money really is in {{ currency }} now.
                   </Trans>
                   {balanceConverted != null && (
                     <>
@@ -211,11 +212,11 @@ export function AccountCurrencyModal({ accountId }: AccountCurrencyModalProps) {
                 </Paragraph>
                 <Paragraph style={{ margin: 0 }}>
                   <Trans>
-                    <strong>Keep the numbers</strong> if the account was set up
-                    in the wrong currency: every amount stays as typed, now in{' '}
-                    {{ currency }}, and its value in {{ defaultCurrency }} is
-                    worked out again. Transfers stay matched to the other
-                    account.
+                    <strong>Keep the numbers</strong> changes only the currency:
+                    every amount keeps its number, now in {{ currency }}, and
+                    what your budget counted for it is worked out again. Use it
+                    when the account was set up in the wrong currency. Transfers
+                    stay matched to the other account.
                   </Trans>
                   {balance != null && (
                     <>

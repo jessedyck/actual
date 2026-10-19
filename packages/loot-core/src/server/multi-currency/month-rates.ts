@@ -10,10 +10,9 @@
 //
 // A category's budget in a month can have a currency of its own
 // (`mc_currency` on `zero_budgets` / `reflect_budgets`). Without one it is
-// in the default currency as it was that month (see `mcCurrencyPeriods`). A
-// categorized transaction's value in its budget's currency is kept in
-// `mc_budget_amount` whenever that isn't the default currency, and the
-// budget sums it. To Budget and group totals stay in the default currency:
+// in the default currency. A categorized transaction's value in its
+// budget's currency is kept in `mc_budget_amount` whenever that isn't the
+// default currency, and the budget sums it. To Budget and group totals stay in the default currency:
 // each category's figures are converted by its `mc-todef-<id>` cell, and a
 // balance carried into a month where the budget's currency differs by its
 // `mc-carry-<id>` cell.
@@ -35,7 +34,6 @@ import type { StoredMonthRate, StoredMonthRates } from '#shared/multi-currency';
 
 import {
   ensureRates,
-  getDefaultCurrencyAt,
   getMultiCurrencyContext,
   getMultiCurrencyContextSync,
   getRate,
@@ -309,7 +307,7 @@ export function monthOfBudgetRow(month: number): string {
 /** Budgets with a currency of their own, by `month:category`. */
 export type BudgetCurrencies = Map<string, string>;
 
-function budgetKey(month: string, categoryId: string): string {
+export function budgetKey(month: string, categoryId: string): string {
   return `${month}:${categoryId}`;
 }
 
@@ -357,10 +355,7 @@ export function getBudgetCurrencyOf(
   monthOrDate: string,
 ): string {
   const month = monthOrDate.slice(0, 7);
-  return (
-    budgets.get(budgetKey(month, categoryId)) ??
-    getDefaultCurrencyAt(context, month)
-  );
+  return budgets.get(budgetKey(month, categoryId)) ?? context.budgetCurrency;
 }
 
 // Re-converting after a rate change
@@ -610,7 +605,6 @@ export async function refreshMonthRates(): Promise<{ updated: number }> {
   const accounts = await loadAccountCurrencies(context.budgetCurrency);
   const budgets = await loadBudgetCurrencies();
   const hasOtherCurrencies =
-    context.periods.length > 0 ||
     budgets.size > 0 ||
     [...accounts.values()].some(code => code !== context.budgetCurrency);
   if (!hasOtherCurrencies) {
@@ -812,10 +806,8 @@ export async function getMonthRates({
   for (const row of budgetRows) {
     currencies.add(getBudgetCurrencyOf(context, budgets, row.category, month));
   }
-  currencies.add(getDefaultCurrencyAt(context, month));
   // Balances carried in from last month convert at this month's rate
   const prevMonth = monthUtils.prevMonth(month);
-  currencies.add(getDefaultCurrencyAt(context, prevMonth));
   for (const [key, currency] of budgets) {
     if (key.startsWith(`${prevMonth}:`)) {
       currencies.add(currency);

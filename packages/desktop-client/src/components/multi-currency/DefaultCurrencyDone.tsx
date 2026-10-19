@@ -25,6 +25,7 @@ export function DefaultCurrencyDone({
 }: DefaultCurrencyDoneProps) {
   const locale = useLocale();
   const { fromCurrency, toCurrency } = preview;
+  const keepFrom = monthUtils.format(preview.keepFrom, 'MMMM yyyy', locale);
   const keepUntil = monthUtils.format(preview.keepUntil, 'MMMM yyyy', locale);
   return (
     <View style={{ gap: 10 }}>
@@ -32,11 +33,11 @@ export function DefaultCurrencyDone({
         <Trans>Done: the default currency is now {{ toCurrency }}.</Trans>
       </Paragraph>
       <ul style={{ margin: 0, paddingLeft: 20 }}>
-        {keptBudgets && (
+        {keptBudgets && result.budgets > 0 && (
           <li>
             <Trans>
-              Budgets without a currency of their own stay in {{ fromCurrency }}{' '}
-              up to {{ keepUntil }}.
+              Budgets from {{ keepFrom }} to {{ keepUntil }} are now in{' '}
+              {{ fromCurrency }}, with the same numbers.
             </Trans>
           </li>
         )}

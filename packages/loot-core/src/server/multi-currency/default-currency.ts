@@ -2,14 +2,18 @@
 // example CAD to EUR) without changing past budgets.
 //
 // Only what uses the default currency follows it: accounts and budgets with
-// a currency of their own keep it. The change can keep budgets without a
-// currency in the old one up to the current month (`mcCurrencyPeriods`),
-// and can give accounts without one a currency first: the old one, or
-// another such as EUR for an account recorded with the docs workaround,
-// whose amounts are then read from its notes. Every transaction's `amount`
-// becomes its value in the new default currency at the rate of its month;
-// values counted in a budget of another currency (`mc_budget_amount`) keep
-// what the budget counted, so past months show what they showed before.
+// a currency of their own keep it. The change can first give the old
+// currency to every budget without one up to the current month, stored on
+// each budget (`mc_currency`) with the same numbers, and can give accounts
+// without one a currency: the old one (same amounts, stored on each
+// transaction as `mc_amount`), or another such as EUR for an account
+// recorded with the docs workaround, whose amounts are then read from its
+// notes. Nothing is stored about dates: later changes of the default
+// currency leave whatever has a currency alone. Every transaction's
+// `amount` becomes its value in the new default currency at the rate of
+// its month; values counted in a budget of another currency
+// (`mc_budget_amount`) keep what the budget counted, so past months show
+// what they showed before.
 import * as db from '#server/db';
 import { APIError } from '#server/errors';
 import { resetFormulaPreferencesCache } from '#server/formulas/bootstrap';
@@ -27,6 +31,7 @@ import {
   hundredthsToMinorUnits,
   MC_PREF_CURRENCY_PERIODS,
   minorUnitsToHundredths,
+  parseCurrencyPeriods,
   roundHalfAwayFromZero,
 } from '#shared/multi-currency';
 import type { CurrencyPeriod } from '#shared/multi-currency';
@@ -34,11 +39,14 @@ import type { CurrencyPeriod } from '#shared/multi-currency';
 import { getWorkaroundNoteCurrency, parseWorkaroundNote } from './accounts';
 import { isSupportedCurrency } from './budget-currency';
 import {
+  budgetKey,
   createMonthRateLookup,
   ensureBudgetFactorRates,
   getBudgetTable,
   loadBudgetCurrencies,
+  monthOfBudgetRow,
 } from './month-rates';
+import type { BudgetCurrencies } from './month-rates';
 import { ensureRates, getMultiCurrencyContext, getRatesAt } from './rates';
 
 type AccountRow = {
@@ -101,9 +109,11 @@ export type DefaultCurrencyPreview = {
   /** What 1 unit of the current default currency is worth today */
   todayRate: number | null;
   accounts: DefaultCurrencyAccount[];
-  /** Budgets without a currency of their own, up to `keepUntil` */
-  unsetBudgets: number;
-  /** The last month budgets without a currency can keep the old one for */
+  /**
+   * Budgets without a currency of their own from `keepFrom` to `keepUntil`
+   * (this month) can get the old one, with the same numbers
+   */
+  keepFrom: string;
   keepUntil: string;
   /**
    * Rules written for the docs workaround. One goes when every account it
@@ -118,6 +128,8 @@ export type DefaultCurrencyPreview = {
 
 export type DefaultCurrencyResult = {
   accounts: number;
+  /** Budgets that got the old currency stored on them */
+  budgets: number;
   transactions: number;
   rules: number;
   deletedRules: number;
@@ -351,6 +363,164 @@ function groupByAccount(transactions: TransactionRow[]) {
   return byAccount;
 }
 
+/** Earlier versions' periods (`MC_PREF_CURRENCY_PERIODS`), oldest first */
+async function loadLegacyPeriods(): Promise<CurrencyPeriod[]> {
+  const row = await db.first<{ value: string | null }>(
+    'SELECT value FROM preferences WHERE id = ?',
+    [MC_PREF_CURRENCY_PERIODS],
+  );
+  return parseCurrencyPeriods(row?.value);
+}
+
+/**
+ * The first month with budgets: three months before the first transaction,
+ * as upstream creates budget months (`getBudgetRange`), or an earlier
+ * budget.
+ */
+async function getFirstBudgetMonth(): Promise<string> {
+  const currentMonth = monthUtils.currentMonth();
+  const firstTransaction = await db.first<{ date: number | null }>(
+    `SELECT MIN(date) AS date FROM transactions
+      WHERE isChild = 0 AND date IS NOT NULL`,
+  );
+  const firstMonth = firstTransaction?.date
+    ? monthUtils.monthFromDate(db.fromDateRepr(firstTransaction.date))
+    : currentMonth;
+  let start = monthUtils.subMonths(
+    firstMonth < currentMonth ? firstMonth : currentMonth,
+    3,
+  );
+  const firstBudget = await db.first<{ month: number | null }>(
+    `SELECT MIN(month) AS month FROM ${getBudgetTable()}`,
+  );
+  if (firstBudget?.month) {
+    const month = monthOfBudgetRow(firstBudget.month);
+    if (month < start) {
+      start = month;
+    }
+  }
+  return start;
+}
+
+/**
+ * The currency each budget without one gets, by `month:category`: up to
+ * `keepUntil`, the one it has now; up to the end of legacy periods, the one
+ * they gave it. No budget gets `toCurrency`, which it follows anyway.
+ */
+async function planBudgetCurrencies({
+  budgets,
+  periods,
+  fromCurrency,
+  toCurrency,
+  keepUntil,
+}: {
+  budgets: BudgetCurrencies;
+  periods: CurrencyPeriod[];
+  fromCurrency: string;
+  toCurrency: string;
+  keepUntil: string | null;
+}): Promise<BudgetCurrencies> {
+  const planned: BudgetCurrencies = new Map();
+  const legacyUntil =
+    periods.length > 0 ? periods[periods.length - 1].until : null;
+  const until =
+    keepUntil !== null && legacyUntil !== null
+      ? keepUntil > legacyUntil
+        ? keepUntil
+        : legacyUntil
+      : (keepUntil ?? legacyUntil);
+  if (until === null) {
+    return planned;
+  }
+  const first = await getFirstBudgetMonth();
+  if (first > until) {
+    return planned;
+  }
+  const categories = await db.all<{ id: string }>(
+    'SELECT id FROM categories WHERE tombstone = 0',
+  );
+  for (const month of monthUtils.rangeInclusive(first, until)) {
+    const isKept = keepUntil !== null && month <= keepUntil;
+    const isLegacy = legacyUntil !== null && month <= legacyUntil;
+    const currency = getBudgetCurrencyAt(month, periods, fromCurrency);
+    if ((!isKept && !isLegacy) || currency === toCurrency) {
+      continue;
+    }
+    for (const { id } of categories) {
+      const key = budgetKey(month, id);
+      if (!budgets.has(key)) {
+        planned.set(key, currency);
+      }
+    }
+  }
+  return planned;
+}
+
+/**
+ * Stores planned budget currencies, with a budget of 0 where a category has
+ * none that month yet.
+ */
+async function storeBudgetCurrencies(planned: BudgetCurrencies) {
+  if (planned.size === 0) {
+    return;
+  }
+  const table = getBudgetTable();
+  const rows = await db.all<{ id: string; month: number; category: string }>(
+    `SELECT id, month, category FROM ${table} WHERE mc_currency IS NULL`,
+  );
+  const ids = new Map(
+    rows.map(row => [
+      budgetKey(monthOfBudgetRow(row.month), row.category),
+      row.id,
+    ]),
+  );
+  for (const [key, currency] of planned) {
+    const id = ids.get(key);
+    if (id) {
+      await db.update(table, { id, mc_currency: currency });
+      continue;
+    }
+    const separator = key.indexOf(':');
+    const month = parseInt(key.slice(0, separator).replace('-', ''));
+    const category = key.slice(separator + 1);
+    // The id upstream's `setBudget` gives a category's budget for a month
+    await db.insert(table, {
+      id: `${month}-${category}`,
+      month,
+      category,
+      amount: 0,
+      mc_currency: currency,
+    });
+  }
+}
+
+/**
+ * Moves legacy periods (`MC_PREF_CURRENCY_PERIODS`) onto the budgets they
+ * covered and clears them, so no rule about dates is stored. Nothing a
+ * budget shows or counted changes. Runs when a budget file opens.
+ */
+export async function migrateCurrencyPeriods(): Promise<{ budgets: number }> {
+  const [periods, context] = await Promise.all([
+    loadLegacyPeriods(),
+    getMultiCurrencyContext(),
+  ]);
+  if (periods.length === 0 || !context.enabled) {
+    return { budgets: 0 };
+  }
+  const planned = await planBudgetCurrencies({
+    budgets: await loadBudgetCurrencies(),
+    periods,
+    fromCurrency: context.budgetCurrency,
+    toCurrency: context.budgetCurrency,
+    keepUntil: null,
+  });
+  await batchMessages(async () => {
+    await storeBudgetCurrencies(planned);
+    await db.update('preferences', { id: MC_PREF_CURRENCY_PERIODS, value: '' });
+  });
+  return { budgets: planned.size };
+}
+
 export async function previewDefaultCurrency({
   toCurrency,
 }: {
@@ -359,17 +529,13 @@ export async function previewDefaultCurrency({
   const context = await getContext(toCurrency);
   const fromCurrency = context.budgetCurrency;
   const keepUntil = monthUtils.currentMonth();
-  const [accounts, transactions, rules, accountNotes, budgetRows] =
+  const [accounts, transactions, rules, accountNotes, keepFrom] =
     await Promise.all([
       loadAccounts(),
       loadTransactions(),
       loadRules(),
       loadAccountNotes(),
-      db.all<{ month: number }>(
-        `SELECT month FROM ${getBudgetTable()}
-          WHERE mc_currency IS NULL AND month <= ?`,
-        [parseInt(keepUntil.replace('-', ''))],
-      ),
+      getFirstBudgetMonth(),
     ]);
   const today = monthUtils.currentDay();
   const todayRate =
@@ -405,7 +571,7 @@ export async function previewDefaultCurrency({
           notedTransactions: noted,
         };
       }),
-    unsetBudgets: budgetRows.length,
+    keepFrom: keepFrom < keepUntil ? keepFrom : keepUntil,
     keepUntil,
     workaroundRules: rules.filter(isWorkaroundRule).map(rule => ({
       id: rule.id,
@@ -428,7 +594,8 @@ type NewValue = {
  * Changes the default currency to `toCurrency`. `accountCurrencies` gives
  * accounts a currency first (an account without one that is left out
  * follows the new default, keeping its numbers); with `keepBudgets`,
- * budgets without a currency keep the old one up to the current month.
+ * budgets without a currency up to the current month get the old one,
+ * stored on each with the same numbers.
  */
 export async function setDefaultCurrency({
   toCurrency,
@@ -456,19 +623,25 @@ export async function setDefaultCurrency({
     ),
   ]);
   const budgets = await loadBudgetCurrencies();
+  const periods = await loadLegacyPeriods();
 
+  // Budgets without a currency up to this month get the one they have now,
+  // stored on each of them; later months follow the new default
   const keepUntil = monthUtils.currentMonth();
-  const lastPeriod = context.periods[context.periods.length - 1];
-  const periods: CurrencyPeriod[] =
-    keepBudgets && !(lastPeriod && lastPeriod.until >= keepUntil)
-      ? [...context.periods, { currency: fromCurrency, until: keepUntil }]
-      : context.periods;
+  const plannedBudgets = await planBudgetCurrencies({
+    budgets,
+    periods,
+    fromCurrency,
+    toCurrency,
+    keepUntil: keepBudgets ? keepUntil : null,
+  });
   const budgetCurrencyBefore = (category: string, month: string) =>
-    budgets.get(`${month}:${category}`) ??
-    getBudgetCurrencyAt(month, context.periods, fromCurrency);
+    budgets.get(budgetKey(month, category)) ??
+    getBudgetCurrencyAt(month, periods, fromCurrency);
   const budgetCurrencyAfter = (category: string, month: string) =>
-    budgets.get(`${month}:${category}`) ??
-    getBudgetCurrencyAt(month, periods, toCurrency);
+    budgets.get(budgetKey(month, category)) ??
+    plannedBudgets.get(budgetKey(month, category)) ??
+    toCurrency;
 
   const accountById = new Map(accounts.map(row => [row.id, row]));
   const before = (accountId: string) =>
@@ -758,8 +931,9 @@ export async function setDefaultCurrency({
       ? 'false'
       : 'true',
   };
-  if (keepBudgets) {
-    prefs[MC_PREF_CURRENCY_PERIODS] = JSON.stringify(periods);
+  if (periods.length > 0) {
+    // Moved onto the budgets above
+    prefs[MC_PREF_CURRENCY_PERIODS] = '';
   }
   if (reportCurrency?.value === toCurrency) {
     prefs.mcReportCurrency = '';
@@ -816,6 +990,7 @@ export async function setDefaultCurrency({
         deletedRules++;
       }
     }
+    await storeBudgetCurrencies(plannedBudgets);
     for (const update of heldUpdates) {
       await db.update('zero_budget_months', update);
     }
@@ -828,6 +1003,7 @@ export async function setDefaultCurrency({
 
   return {
     accounts: updatedAccounts,
+    budgets: plannedBudgets.size,
     transactions: updatedTransactions,
     rules: convertedRules.length,
     deletedRules,

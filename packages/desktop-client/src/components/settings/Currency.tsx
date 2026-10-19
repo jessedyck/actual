@@ -166,7 +166,7 @@ export function CurrencySettings() {
               )
             : isMultiCurrencyEnabled
               ? t(
-                  'Changing it here relabels every amount. To keep past budgets and accounts in the current currency, use Change default currency under Multi-currency accounts.',
+                  'Changing it here relabels every amount. To set past budgets and accounts to the current currency first, use Change default currency under Multi-currency accounts.',
                 )
               : undefined
         }

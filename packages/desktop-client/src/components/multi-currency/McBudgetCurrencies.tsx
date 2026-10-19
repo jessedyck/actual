@@ -7,10 +7,6 @@
 import { createContext, Fragment, useContext } from 'react';
 import type { ReactNode } from 'react';
 
-import {
-  getBudgetCurrencyAt,
-  parseCurrencyPeriods,
-} from '@actual-app/core/shared/multi-currency';
 import { q } from '@actual-app/core/shared/query';
 
 import { McDisplayCurrencyContext } from '#hooks/useMcDisplayCurrency';
@@ -45,7 +41,6 @@ function monthOfRow(month: number): string {
 export function useBudgetCurrencyLookup(): BudgetCurrencyLookup | null {
   const { isEnabled, budgetCurrency } = useMultiCurrency();
   const [budgetType] = useSyncedPref('budgetType');
-  const [periodsPref] = useSyncedPref('mcCurrencyPeriods');
   const table = budgetType === 'tracking' ? 'reflect_budgets' : 'zero_budgets';
   const { data } = useQuery<BudgetCurrencyRow>(
     () =>
@@ -59,7 +54,6 @@ export function useBudgetCurrencyLookup(): BudgetCurrencyLookup | null {
   if (!isEnabled) {
     return null;
   }
-  const periods = parseCurrencyPeriods(periodsPref);
   const explicit = new Map(
     (data ?? []).map(row => [
       `${monthOfRow(row.month)}:${row.category}`,
@@ -67,8 +61,7 @@ export function useBudgetCurrencyLookup(): BudgetCurrencyLookup | null {
     ]),
   );
   return (categoryId, month) =>
-    explicit.get(`${month}:${categoryId}`) ??
-    getBudgetCurrencyAt(month, periods, budgetCurrency);
+    explicit.get(`${month}:${categoryId}`) ?? budgetCurrency;
 }
 
 export function McBudgetCurrenciesProvider({
@@ -181,13 +174,11 @@ export function useOwnBudgetCurrencyMenu(
 }
 
 /**
- * True when a budget has a currency of its own, or budgets without one keep
- * an earlier default currency. Changing the default then needs the "Change
- * default currency" tool, which keeps them as they are.
+ * True when a budget has a currency of its own. Changing the default then
+ * needs the "Change default currency" tool, which leaves it as it is.
  */
 export function useHasBudgetCurrencies(): boolean {
   const [budgetType] = useSyncedPref('budgetType');
-  const [periodsPref] = useSyncedPref('mcCurrencyPeriods');
   const table = budgetType === 'tracking' ? 'reflect_budgets' : 'zero_budgets';
   const { data } = useQuery<{ id: string }>(
     () =>
@@ -197,7 +188,5 @@ export function useHasBudgetCurrencies(): boolean {
         .limit(1),
     [table],
   );
-  return (
-    (data?.length ?? 0) > 0 || parseCurrencyPeriods(periodsPref).length > 0
-  );
+  return (data?.length ?? 0) > 0;
 }

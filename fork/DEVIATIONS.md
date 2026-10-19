@@ -201,9 +201,8 @@ _Reconcile:_ remove both call sites once upstream converts amounts itself.
   off while multi-currency is on (`settings/index.tsx`; upstream clears it
   whenever the currency flag is off).
 - The default-currency picker is disabled while any account or budget has a
-  currency of its own, or months keep an earlier default
-  (`settings/Currency.tsx`): existing amounts would otherwise be read in the
-  wrong currency. Its description points to _Change default currency_
+  currency of its own (`settings/Currency.tsx`): existing amounts would
+  otherwise be read in the wrong currency. Its description points to _Change default currency_
   (D-017).
 - Fork-owned rows in `components/multi-currency/`: automatic downloads
   (`mcRatesOnline`), service URL (`mcRatesUrl`), budget values waiting for a
@@ -505,8 +504,7 @@ IncomeCategoryListItem}.tsx`, `modals/{Envelope,Tracking}BudgetMenuModal.tsx`,
 
 - **Data** (migration `1792130000000_mc_budget_currency.sql`, D-002):
   - `zero_budgets.mc_currency` / `reflect_budgets.mc_currency`: the budget's
-    own currency. NULL: the default currency, or the one budgets without a
-    currency kept for that month (`mcCurrencyPeriods`, below).
+    own currency. NULL: the default currency.
   - `transactions.mc_budget_amount`: the transaction's value in its budget's
     currency when that isn't the default one; NULL without a category, in an
     off-budget account, for a split parent, or for a budget in the default
@@ -514,9 +512,11 @@ IncomeCategoryListItem}.tsx`, `modals/{Envelope,Tracking}BudgetMenuModal.tsx`,
     except an exchange rate adjustment, which is 0 in its account's
     currency).
   - Synced preferences (`types/prefs.ts`): `mcMonthRates`, JSON
-    `{"YYYY-MM:BASE:QUOTE": {rate, manual?, final?}}`; `mcCurrencyPeriods`,
-    JSON `[{currency, until: "YYYY-MM"}]`, the currency budgets without one
-    keep up to a month after a change of default currency.
+    `{"YYYY-MM:BASE:QUOTE": {rate, manual?, final?}}`. Legacy
+    `mcCurrencyPeriods` (JSON `[{currency, until: "YYYY-MM"}]`), a date rule
+    the first version of _Change default currency_ stored, is moved onto the
+    budgets it covered and cleared when a budget file opens
+    (`migrateCurrencyPeriods`); no date rule is stored any more.
 - **Month rates** (`server/multi-currency/month-rates.ts`): every conversion
   uses one rate per month and currency pair, the average of the month's
   stored daily rates up to today. A month without rates yet (a future one)
@@ -571,19 +571,24 @@ ExpenseCategoryListItem,IncomeCategoryListItem}.tsx`; the budget menus
   Default currency_; fork `DefaultCurrencySetting`, `DefaultCurrencyModal`;
   server `default-currency.ts`). It only touches what has no currency of its
   own:
-  - Budgets without one keep the old currency up to the current month
-    (appended to `mcCurrencyPeriods`; numbers and what they counted stay), or
-    follow the new default with the same numbers.
-  - Accounts without one keep the old currency as their own (same amounts),
-    get another (read from workaround notes, else converted at each month's
-    rate), or follow with the same numbers. The preview suggests a currency
+  - Budgets without one, from the first budget month up to the current
+    month, get the old currency stored on them (`mc_currency`; a budget of 0
+    is added where a category has none that month), with the same numbers
+    and what they counted; or they follow the new default with the same
+    numbers. Later changes of the default leave budgets with a currency
+    alone, so nothing about dates is stored.
+  - Accounts without one get the old currency as their own (every
+    transaction gets `mc_amount` with the same number), get another (read
+    from workaround notes, else converted at each month's rate), or follow
+    with the same numbers. The preview suggests a currency
     from the docs' `#currency:XXX` account note, an "(XXX)" name suffix, or
     workaround notes on at least half of the account's transactions.
   - Every `amount` is worked out again in the new default at its month's
     rate; transfers mirror (the side in the new default decides, then one
     read from a note, then the paying side), split children add up to their
-    parent. Kept budgets keep counting what they counted. Money held for
-    next month (`zero_budget_months.buffered`) converts in kept months.
+    parent. Budgets set to the old currency keep counting what they counted.
+    Money held for next month (`zero_budget_months.buffered`) converts in
+    the months up to the current one.
   - Rules written for the docs workaround (a templated `set notes` with
     "FX rate:" plus a templated `set amount`) are deleted when none of their
     accounts stays in the old currency. Rule and schedule amounts are in

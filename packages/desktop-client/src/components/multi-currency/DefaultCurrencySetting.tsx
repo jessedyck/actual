@@ -21,8 +21,8 @@ export function DefaultCurrencySetting() {
         <Trans>
           Budgets and accounts without a currency of their own use the default
           currency, {{ budgetCurrency }}, as does To Budget. Changing it here
-          can keep past budgets in {{ budgetCurrency }}, so they show what they
-          showed before.
+          can first set past budgets and accounts to {{ budgetCurrency }} with
+          the same numbers, so they show what they showed before.
         </Trans>
       }
       control={

@@ -117,11 +117,7 @@ async function loadCurrencySetup(): Promise<CurrencySetup | null> {
   }
   const foreign = await loadForeignAccounts(context.budgetCurrency);
   const budgets = await loadBudgetCurrencies();
-  if (
-    foreign.size === 0 &&
-    budgets.size === 0 &&
-    context.periods.length === 0
-  ) {
+  if (foreign.size === 0 && budgets.size === 0) {
     return null;
   }
   const offBudget = await db.all<Pick<db.DbAccount, 'id'>>(

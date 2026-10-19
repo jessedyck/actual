@@ -19,17 +19,13 @@ export const DEFAULT_RATES_URL = 'https://api.frankfurter.dev/v2';
 /** Synced preference keys owned by the fork. */
 export const MC_PREF_RATES_ONLINE = 'mcRatesOnline';
 export const MC_PREF_RATES_URL = 'mcRatesUrl';
-// [fork:mc D-017] Earlier budget currencies, and the rates months use
-export const MC_PREF_CURRENCY_PERIODS = 'mcCurrencyPeriods';
+// [fork:mc D-017] The rates months use
 export const MC_PREF_MONTH_RATES = 'mcMonthRates';
-
-// [fork:mc D-017] Budget currency by month.
-//
-// A budget can change currency from a given month on (CAD until October,
-// EUR from November). `defaultCurrencyCode` holds the latest currency;
-// `mcCurrencyPeriods` lists the earlier ones, oldest first, each with the
-// last month it covers. A transaction's `amount` is in the currency of its
-// month, so months before a change keep their numbers.
+// [fork:mc D-017] Legacy: earlier versions kept past budgets in an older
+// default currency with this list of periods ("CAD until 2026-10"). Budgets
+// now get that currency stored on them instead; `migrateCurrencyPeriods`
+// moves any list left over onto the budgets and clears it.
+export const MC_PREF_CURRENCY_PERIODS = 'mcCurrencyPeriods';
 
 export type CurrencyPeriod = {
   currency: string;
@@ -37,17 +33,9 @@ export type CurrencyPeriod = {
   until: string;
 };
 
-/** A month where the budget currency changes. */
-export type CurrencyChange = {
-  /** First month in the new currency, `YYYY-MM` */
-  month: string;
-  from: string;
-  to: string;
-};
-
 const MONTH_PATTERN = /^\d{4}-\d{2}$/;
 
-/** The stored periods, oldest first; [] when the budget has one currency. */
+/** The legacy periods, oldest first; [] when there are none. */
 export function parseCurrencyPeriods(
   value: string | null | undefined,
 ): CurrencyPeriod[] {
@@ -72,7 +60,7 @@ export function parseCurrencyPeriods(
     .sort((a, b) => (a.until < b.until ? -1 : a.until > b.until ? 1 : 0));
 }
 
-/** The budget currency of a month (`YYYY-MM`) or of a date. */
+/** The currency legacy periods gave a month (`YYYY-MM`) or a date. */
 export function getBudgetCurrencyAt(
   monthOrDate: string,
   periods: readonly CurrencyPeriod[],
@@ -85,27 +73,6 @@ export function getBudgetCurrencyAt(
     }
   }
   return latest;
-}
-
-/** The months where the currency changes, oldest first. */
-export function getCurrencyChanges(
-  periods: readonly CurrencyPeriod[],
-  latest: string,
-): CurrencyChange[] {
-  return periods
-    .map((period, index) => ({
-      month: nextMonth(period.until),
-      from: period.currency,
-      to: periods[index + 1]?.currency ?? latest,
-    }))
-    .filter(change => change.from !== change.to);
-}
-
-function nextMonth(month: string): string {
-  const [year, number] = month.split('-').map(Number);
-  return number === 12
-    ? `${year + 1}-01`
-    : `${year}-${String(number + 1).padStart(2, '0')}`;
 }
 
 /** Key of a month's stored rate, e.g. `2026-11:CAD:EUR`. */

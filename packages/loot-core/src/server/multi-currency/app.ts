@@ -4,10 +4,7 @@ import { createApp } from '#server/app';
 import { mutator, runMutator } from '#server/mutators';
 import { addSyncListener } from '#server/sync';
 import { undoable } from '#server/undo';
-import {
-  MC_PREF_CURRENCY_PERIODS,
-  MC_PREF_MONTH_RATES,
-} from '#shared/multi-currency';
+import { MC_PREF_MONTH_RATES } from '#shared/multi-currency';
 
 import {
   getAccountTotals,
@@ -15,7 +12,11 @@ import {
   setAccountCurrency,
 } from './accounts';
 import { setBudgetCurrency } from './budget-currency';
-import { previewDefaultCurrency, setDefaultCurrency } from './default-currency';
+import {
+  migrateCurrencyPeriods,
+  previewDefaultCurrency,
+  setDefaultCurrency,
+} from './default-currency';
 import {
   applyBudgetFactors,
   createMonthRateLookup,
@@ -75,8 +76,9 @@ app.method('mc-account-totals', mutator(getAccountTotals));
 /**
  * [fork:mc D-017] While a budget file is open: keeps the budget's
  * conversion cells in step with currency and rate changes (including undo
- * and changes synced from other devices), and brings this month's rates up
- * to date once.
+ * and changes synced from other devices). Once, when it opens: moves
+ * budget currencies an earlier version stored by date onto the budgets,
+ * and brings this month's rates up to date.
  */
 type ChangedRows = Map<string, Record<string, unknown>>;
 
@@ -86,13 +88,7 @@ app.service(() => {
       data.get(table) as ChangedRows | undefined;
     const changedPrefs = [
       ...(rowsOf(newValues, 'preferences')?.keys() ?? []),
-    ].some(id =>
-      [
-        MC_PREF_MONTH_RATES,
-        MC_PREF_CURRENCY_PERIODS,
-        'defaultCurrencyCode',
-      ].includes(id),
-    );
+    ].some(id => [MC_PREF_MONTH_RATES, 'defaultCurrencyCode'].includes(id));
     const changedBudgets = ['zero_budgets', 'reflect_budgets'].some(table =>
       [...(rowsOf(newValues, table)?.entries() ?? [])].some(
         ([id, row]) =>
@@ -104,7 +100,10 @@ app.service(() => {
       applyBudgetFactors();
     }
   });
-  void runMutator(() => refreshMonthRates()).catch(error => {
+  void runMutator(async () => {
+    await migrateCurrencyPeriods();
+    await refreshMonthRates();
+  }).catch(error => {
     logger.warn('[multi-currency] Could not refresh month rates:', error);
   });
   return unlisten;
