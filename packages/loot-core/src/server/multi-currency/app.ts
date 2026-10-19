@@ -9,7 +9,11 @@ import {
   MC_PREF_MONTH_RATES,
 } from '#shared/multi-currency';
 
-import { recomputePending, setAccountCurrency } from './accounts';
+import {
+  getAccountTotals,
+  recomputePending,
+  setAccountCurrency,
+} from './accounts';
 import { setBudgetCurrency } from './budget-currency';
 import { previewDefaultCurrency, setDefaultCurrency } from './default-currency';
 import {
@@ -39,6 +43,7 @@ export type MultiCurrencyHandlers = {
   'mc-month-rate-set': typeof setMonthRate;
   'mc-month-rates-refresh': typeof refreshMonthRates;
   'mc-month-convert': typeof convertAtMonth;
+  'mc-account-totals': typeof getAccountTotals;
 };
 
 export const app = createApp<MultiCurrencyHandlers>();
@@ -64,6 +69,8 @@ app.method('mc-month-rates', mutator(getMonthRates));
 app.method('mc-month-rate-set', mutator(undoable(setMonthRate)));
 app.method('mc-month-rates-refresh', mutator(refreshMonthRates));
 app.method('mc-month-convert', mutator(convertAtMonth));
+// [fork:mc D-012] Account totals in another currency
+app.method('mc-account-totals', mutator(getAccountTotals));
 
 /**
  * [fork:mc D-017] While a budget file is open: keeps the budget's

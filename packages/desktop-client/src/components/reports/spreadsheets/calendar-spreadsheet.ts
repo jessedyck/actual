@@ -7,6 +7,9 @@ import * as d from 'date-fns';
 
 import type { useSpreadsheet } from '#hooks/useSpreadsheet';
 import { aqlQuery } from '#queries/aqlQuery';
+// [fork:mc D-015]
+import { prepareFlowConversion } from '#reports/mcReportValuation';
+import type { McValuationConfig } from '#reports/mcReportValuation';
 
 export type CalendarDataType = {
   date: Date;
@@ -21,6 +24,8 @@ export function calendarSpreadsheet(
   conditions: RuleConditionEntity[] = [],
   conditionsOp: 'and' | 'or' = 'and',
   firstDayOfWeekIdx?: SyncedPrefs['firstDayOfWeekIdx'],
+  // [fork:mc D-015] Shown in another currency
+  mcValuation: McValuationConfig | null = null,
 ) {
   return async (
     spreadsheet: ReturnType<typeof useSpreadsheet>,
@@ -124,6 +129,23 @@ export function calendarSpreadsheet(
 
       return months;
     };
+
+    // [fork:mc D-015] Each day's sums at its month's average rate
+    const conversion = mcValuation
+      ? await prepareFlowConversion(mcValuation, {
+          startDate: d.format(startDay, 'yyyy-MM-dd'),
+          endDate: d.format(endDay, 'yyyy-MM-dd'),
+        })
+      : null;
+    if (conversion) {
+      const convertDays = (rows: Array<{ date: string; amount: number }>) =>
+        rows.map(row => ({
+          ...row,
+          amount: conversion.convert(row.date.slice(0, 7), row.amount),
+        }));
+      incomeData = { ...incomeData, data: convertDays(incomeData.data) };
+      expenseData = { ...expenseData, data: convertDays(expenseData.data) };
+    }
 
     setData(
       recalculate(

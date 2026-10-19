@@ -9,6 +9,8 @@ import type {
   SummaryWidget,
 } from '@actual-app/core/types/models';
 
+// [fork:mc D-015]
+import { McReportCurrencyProvider } from '#components/multi-currency/McReportCurrencyProvider';
 import { DateRange } from '#components/reports/DateRange';
 import { ReportCard } from '#components/reports/ReportCard';
 import { ReportCardName } from '#components/reports/ReportCardName';
@@ -18,6 +20,8 @@ import { summarySpreadsheet } from '#components/reports/spreadsheets/summary-spr
 import { SummaryNumber } from '#components/reports/SummaryNumber';
 import { useReport } from '#components/reports/useReport';
 import { useLocale } from '#hooks/useLocale';
+// [fork:mc D-015]
+import { useMcReportCurrencyContext } from '#hooks/useMcReportCurrency';
 
 type SummaryCardProps = {
   widgetId: string;
@@ -26,13 +30,24 @@ type SummaryCardProps = {
   onMetaChange: (newMeta: SummaryWidget['meta']) => void;
 };
 
-export function SummaryCard({
+// [fork:mc D-015] Can be shown in another currency
+export function SummaryCard(props: SummaryCardProps) {
+  return (
+    <McReportCurrencyProvider>
+      <SummaryCardInner {...props} />
+    </McReportCurrencyProvider>
+  );
+}
+
+function SummaryCardInner({
   widgetId,
   isEditing,
   meta = {},
   onMetaChange,
 }: SummaryCardProps) {
   const locale = useLocale();
+  // [fork:mc D-015]
+  const mcValuation = useMcReportCurrencyContext()?.valuation ?? null;
   const { t } = useTranslation();
   const [latestTransaction, setLatestTransaction] = useState<string>('');
   const [nameMenuOpen, setNameMenuOpen] = useState(false);
@@ -81,8 +96,17 @@ export function SummaryCard({
         meta?.conditionsOp,
         content,
         locale,
+        mcValuation,
       ),
-    [start, end, meta?.conditions, meta?.conditionsOp, content, locale],
+    [
+      start,
+      end,
+      meta?.conditions,
+      meta?.conditionsOp,
+      content,
+      locale,
+      mcValuation,
+    ],
   );
 
   const data = useReport('summary', params);

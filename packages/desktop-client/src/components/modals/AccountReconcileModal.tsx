@@ -29,7 +29,7 @@ import { useFormat } from '#hooks/useFormat';
 import { useLocale } from '#hooks/useLocale';
 // [fork:mc D-008]
 import { useMcAccountBalance } from '#hooks/useMcAccountBalance';
-import { useAccountCurrency } from '#hooks/useMultiCurrency';
+import { useAccountCurrency, useMultiCurrency } from '#hooks/useMultiCurrency';
 import { useMultiCurrencyFormat } from '#hooks/useMultiCurrencyFormat';
 import { useSheetValue } from '#hooks/useSheetValue';
 import type { Modal as ModalType } from '#modals/modalsSlice';
@@ -58,6 +58,7 @@ export function AccountReconcileModal({
   // currency. The input counts hundredths like every amount input; the
   // amount handed on is in the currency's minor units.
   const accountCurrency = useAccountCurrency(account);
+  const { isEnabled: isMultiCurrencyEnabled } = useMultiCurrency();
   const mcCleared = useMcAccountBalance(
     accountCurrency.isForeign ? accountId : null,
   )?.cleared;
@@ -110,9 +111,17 @@ export function AccountReconcileModal({
           />
           <View>
             <FieldLabel
-              title={t(
-                'Enter the current balance of your bank account that you want to reconcile with:',
-              )}
+              title={
+                // [fork:mc D-008] Names the currency the balance is typed in
+                isMultiCurrencyEnabled
+                  ? t(
+                      'Enter the current balance of your bank account, in {{currency}}, that you want to reconcile with:',
+                      { currency: accountCurrency.currency },
+                    )
+                  : t(
+                      'Enter the current balance of your bank account that you want to reconcile with:',
+                    )
+              }
             />
             {amount != null && (
               <View

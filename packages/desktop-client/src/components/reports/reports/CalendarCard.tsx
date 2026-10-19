@@ -27,6 +27,8 @@ import { format as formatDate } from 'date-fns';
 import { debounce } from 'es-toolkit/compat';
 
 import { FinancialText } from '#components/FinancialText';
+// [fork:mc D-015]
+import { McReportCurrencyProvider } from '#components/multi-currency/McReportCurrencyProvider';
 import { PrivacyFilter } from '#components/PrivacyFilter';
 import { CalendarCardSkeleton } from '#components/reports/CalendarCardSkeleton';
 import { DateRange } from '#components/reports/DateRange';
@@ -39,6 +41,8 @@ import type { CalendarDataType } from '#components/reports/spreadsheets/calendar
 import { useReport } from '#components/reports/useReport';
 import { useFormat } from '#hooks/useFormat';
 import type { FormatType } from '#hooks/useFormat';
+// [fork:mc D-015]
+import { useMcReportCurrencyContext } from '#hooks/useMcReportCurrency';
 import { useMergedRefs } from '#hooks/useMergedRefs';
 import { useNavigate } from '#hooks/useNavigate';
 import { useResizeObserver } from '#hooks/useResizeObserver';
@@ -51,7 +55,16 @@ type CalendarCardProps = {
   firstDayOfWeekIdx?: SyncedPrefs['firstDayOfWeekIdx'];
 };
 
-export function CalendarCard({
+// [fork:mc D-015] Can be shown in another currency
+export function CalendarCard(props: CalendarCardProps) {
+  return (
+    <McReportCurrencyProvider>
+      <McCalendarCard {...props} />
+    </McReportCurrencyProvider>
+  );
+}
+
+function McCalendarCard({
   widgetId,
   isEditing,
   meta = {},
@@ -60,6 +73,8 @@ export function CalendarCard({
 }: CalendarCardProps) {
   const { t } = useTranslation();
   const format = useFormat();
+  // [fork:mc D-015]
+  const mcValuation = useMcReportCurrencyContext()?.valuation ?? null;
 
   const [latestTransaction, setLatestTransaction] = useState<string>('');
 
@@ -90,8 +105,16 @@ export function CalendarCard({
         meta?.conditions,
         meta?.conditionsOp,
         firstDayOfWeekIdx,
+        mcValuation,
       ),
-    [start, end, meta?.conditions, meta?.conditionsOp, firstDayOfWeekIdx],
+    [
+      start,
+      end,
+      meta?.conditions,
+      meta?.conditionsOp,
+      firstDayOfWeekIdx,
+      mcValuation,
+    ],
   );
 
   const [cardOrientation, setCardOrientation] = useState<'row' | 'column'>(

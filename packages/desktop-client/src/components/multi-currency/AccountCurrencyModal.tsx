@@ -1,8 +1,9 @@
-// [fork:mc D-012] Changes the currency of an existing account. Existing
-// transactions get an amount in the new currency (from the rule-template
-// workaround's notes, otherwise converted at each transaction's date); their
-// budget amounts never change.
-import { useState } from 'react';
+// [fork:mc D-012] Changes the currency of an existing account. Its
+// transactions either keep their value and get amounts converted into the
+// new currency (from the rule-template workaround's notes, otherwise at
+// each month's rate), or keep their numbers, now read in the new currency,
+// for an account that was set up in the wrong one.
+import { useEffect, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 
 import { Button, ButtonWithLoading } from '@actual-app/components/button';
@@ -14,6 +15,8 @@ import { theme } from '@actual-app/components/theme';
 import { View } from '@actual-app/components/view';
 import { send } from '@actual-app/core/platform/client/connection';
 import { currencies } from '@actual-app/core/shared/currencies';
+import * as monthUtils from '@actual-app/core/shared/months';
+import { convertMinorUnits } from '@actual-app/core/shared/multi-currency';
 import type { AccountEntity } from '@actual-app/core/types/models';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -26,7 +29,11 @@ import {
   ModalTitle,
 } from '#components/common/Modal';
 import { useAccount } from '#hooks/useAccount';
+import { useMcAccountBalance } from '#hooks/useMcAccountBalance';
 import { useMultiCurrency } from '#hooks/useMultiCurrency';
+import { useMultiCurrencyFormat } from '#hooks/useMultiCurrencyFormat';
+import { useSheetValue } from '#hooks/useSheetValue';
+import * as bindings from '#spreadsheet/bindings';
 import { mcErrorMessage } from '#util/mcErrorMessage';
 
 type AccountCurrencyModalProps = {
@@ -39,46 +46,105 @@ export function AccountCurrencyModal({ accountId }: AccountCurrencyModalProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const account = useAccount(accountId);
-  const { budgetCurrency } = useMultiCurrency();
-  const currentCurrency = account?.mc_currency || budgetCurrency;
-  const [currency, setCurrency] = useState(currentCurrency);
+  const { budgetCurrency: defaultCurrency } = useMultiCurrency();
+  const mcFormat = useMultiCurrencyFormat();
+  const fromCurrency = account?.mc_currency || defaultCurrency;
+  const [currency, setCurrency] = useState(fromCurrency);
   const [isSaving, setIsSaving] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // The account's balance in its currency, for the two examples
+  const defaultBalance = useSheetValue<'account', 'balance'>(
+    bindings.accountBalance(accountId),
+  );
+  const ownBalance = useMcAccountBalance(
+    account?.mc_currency ? accountId : null,
+  )?.balance;
+  const balance = account?.mc_currency ? ownBalance : defaultBalance;
+  const isChanged = currency !== fromCurrency;
+  const [converted, setConverted] = useState<number | null>(null);
+
+  useEffect(() => {
+    let isCurrent = true;
+    setConverted(null);
+    if (!isChanged || balance == null) {
+      return;
+    }
+    void send(
+      'mc-convert',
+      {
+        amount: balance,
+        date: monthUtils.currentDay(),
+        from: fromCurrency,
+        to: currency,
+      },
+      { catchErrors: true },
+    ).then(response => {
+      if (isCurrent && !response.error) {
+        setConverted(response.data);
+      }
+    });
+    return () => {
+      isCurrent = false;
+    };
+  }, [isChanged, balance, fromCurrency, currency]);
 
   const options: Array<[string, string]> = currencies
     .filter(item => item.code !== '')
     .map(item => [
       item.code,
-      item.code === budgetCurrency
-        ? t('{{code}} - {{name}} (budget currency)', {
+      item.code === fromCurrency
+        ? t('{{code}} - {{name}} (current)', {
             code: item.code,
             name: item.name,
           })
-        : `${item.code} - ${item.name}`,
+        : item.code === defaultCurrency
+          ? t('{{code}} - {{name}} (default currency)', {
+              code: item.code,
+              name: item.name,
+            })
+          : `${item.code} - ${item.name}`,
     ]);
 
-  const isChanged = currency !== currentCurrency;
-  const isToBudgetCurrency = currency === budgetCurrency;
+  const name = account?.name ?? '';
+  const balanceNow =
+    balance == null ? '' : mcFormat.format(balance, fromCurrency);
+  const balanceKept =
+    balance == null
+      ? ''
+      : mcFormat.format(
+          convertMinorUnits(balance, 1, fromCurrency, currency),
+          currency,
+        );
+  const balanceConverted =
+    converted == null ? null : mcFormat.format(converted, currency);
 
-  async function onSave(close: () => void) {
+  async function onSave(convert: boolean, close: () => void) {
     setIsSaving(true);
     setError(null);
     try {
-      const response = await send('mc-account-set-currency', {
-        id: accountId,
-        currency: isToBudgetCurrency ? null : currency,
-      });
+      const response = await send(
+        'mc-account-set-currency',
+        {
+          id: accountId,
+          currency: currency === defaultCurrency ? null : currency,
+          convert,
+        },
+        { catchErrors: true },
+      );
+      if (response.error) {
+        setError(mcErrorMessage(response.error));
+        return;
+      }
       await queryClient.invalidateQueries({
         queryKey: accountQueries.lists(),
       });
-      if (response.missingRates === 0) {
+      if (response.data.missingRates === 0) {
         close();
       } else {
-        setResult(response);
+        setResult(response.data);
       }
-    } catch (saveError) {
-      setError(mcErrorMessage(saveError));
     } finally {
       setIsSaving(false);
     }
@@ -94,15 +160,25 @@ export function AccountCurrencyModal({ accountId }: AccountCurrencyModalProps) {
             }
             rightContent={<ModalCloseButton onPress={() => state.close()} />}
           />
-          <View style={{ gap: 15, maxWidth: 520 }}>
+          <View style={{ gap: 15, maxWidth: 560 }}>
             <Paragraph style={{ margin: 0 }}>
-              <Trans>
-                The currency of "{{ name: account?.name ?? '' }}". Your budget
-                stays in {{ budgetCurrency }}.
-              </Trans>
+              {balance == null ? (
+                <Trans>
+                  "{{ name }}" is in {{ fromCurrency }}.
+                </Trans>
+              ) : (
+                <Trans>
+                  "{{ name }}" is in {{ fromCurrency }}. Its balance:{' '}
+                  {{ balanceNow }}.
+                </Trans>
+              )}
             </Paragraph>
 
-            <InlineField label={t('Currency')} width="100%">
+            <InlineField
+              label={t('New currency')}
+              labelWidth={110}
+              width="100%"
+            >
               <Select
                 value={currency}
                 options={options}
@@ -115,22 +191,40 @@ export function AccountCurrencyModal({ accountId }: AccountCurrencyModalProps) {
             </InlineField>
 
             {isChanged && !result && (
-              <Paragraph style={{ margin: 0, color: theme.pageTextSubdued }}>
-                {isToBudgetCurrency ? (
+              <View style={{ gap: 8 }}>
+                <Paragraph style={{ margin: 0 }}>
                   <Trans>
-                    The amounts in {{ currentCurrency }} are removed from this
-                    account's transactions. Their budget amounts don't change.
+                    <strong>Convert</strong> if the money really is in{' '}
+                    {{ currency }} now: each transaction keeps its value and its
+                    amount becomes the {{ currency }} equivalent, from its notes
+                    when the rule-template workaround wrote one, else at its
+                    month's rate.
                   </Trans>
-                ) : (
+                  {balanceConverted != null && (
+                    <>
+                      {' '}
+                      <Trans>
+                        The balance becomes about {{ balanceConverted }}.
+                      </Trans>
+                    </>
+                  )}
+                </Paragraph>
+                <Paragraph style={{ margin: 0 }}>
                   <Trans>
-                    Each existing transaction gets an amount in {{ currency }}:
-                    taken from its notes when they were written by the
-                    rule-template workaround, otherwise converted from its
-                    budget amount at that day's exchange rate. Budget amounts
-                    don't change.
+                    <strong>Keep the numbers</strong> if the account was set up
+                    in the wrong currency: every amount stays as typed, now in{' '}
+                    {{ currency }}, and its value in {{ defaultCurrency }} is
+                    worked out again. Transfers stay matched to the other
+                    account.
                   </Trans>
-                )}
-              </Paragraph>
+                  {balance != null && (
+                    <>
+                      {' '}
+                      <Trans>The balance becomes {{ balanceKept }}.</Trans>
+                    </>
+                  )}
+                </Paragraph>
+              </View>
             )}
 
             {result && (
@@ -150,15 +244,25 @@ export function AccountCurrencyModal({ accountId }: AccountCurrencyModalProps) {
                 {result ? <Trans>Close</Trans> : <Trans>Cancel</Trans>}
               </Button>
               {!result && (
-                <ButtonWithLoading
-                  variant="primary"
-                  isLoading={isSaving}
-                  isDisabled={!isChanged || !account}
-                  onPress={() => void onSave(() => state.close())}
-                  style={{ marginLeft: 10 }}
-                >
-                  <Trans>Change currency</Trans>
-                </ButtonWithLoading>
+                <>
+                  <ButtonWithLoading
+                    isLoading={isSaving}
+                    isDisabled={!isChanged || !account}
+                    onPress={() => void onSave(false, () => state.close())}
+                    style={{ marginLeft: 10 }}
+                  >
+                    <Trans>Keep the numbers</Trans>
+                  </ButtonWithLoading>
+                  <ButtonWithLoading
+                    variant="primary"
+                    isLoading={isSaving}
+                    isDisabled={!isChanged || !account}
+                    onPress={() => void onSave(true, () => state.close())}
+                    style={{ marginLeft: 10 }}
+                  >
+                    <Trans>Convert</Trans>
+                  </ButtonWithLoading>
+                </>
               )}
             </ModalButtons>
           </View>

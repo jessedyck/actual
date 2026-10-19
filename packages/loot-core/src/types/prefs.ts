@@ -42,6 +42,9 @@ export type SyncedPrefs = Partial<
     // month converts at (JSON)
     | 'mcCurrencyPeriods'
     | 'mcMonthRates'
+    // [fork:mc D-012] Currency the account totals are shown in (default: the
+    // default currency)
+    | 'mcTotalsCurrency'
     | `show-account-${string}-net-worth-chart`
     | `side-nav.show-balance-history-${string}`
     // @deprecated: superseded by `transaction-table-columns-${string}`; only

@@ -10,6 +10,12 @@ import type { Locale } from 'date-fns';
 
 import type { useSpreadsheet } from '#hooks/useSpreadsheet';
 import { aqlQuery } from '#queries/aqlQuery';
+// [fork:mc D-015]
+import { prepareFlowConversion } from '#reports/mcReportValuation';
+import type {
+  McFlowConversion,
+  McValuationConfig,
+} from '#reports/mcReportValuation';
 
 export function summarySpreadsheet(
   start: string,
@@ -18,6 +24,8 @@ export function summarySpreadsheet(
   conditionsOp: 'and' | 'or' = 'and',
   summaryContent: SummaryContent,
   locale: Locale,
+  // [fork:mc D-015] Shown in another currency
+  mcValuation: McValuationConfig | null = null,
 ) {
   return async (
     spreadsheet: ReturnType<typeof useSpreadsheet>,
@@ -110,7 +118,17 @@ export function summarySpreadsheet(
 
     let query = makeRootQuery();
 
+    // [fork:mc D-015] In another currency, each day's sum converts at its
+    // month's average rate
+    const conversion = mcValuation
+      ? await prepareFlowConversion(mcValuation, {
+          startDate: d.format(startDay, 'yyyy-MM-dd'),
+          endDate: d.format(endDay, 'yyyy-MM-dd'),
+        })
+      : null;
+
     if (
+      conversion ||
       summaryContent.type === 'avgPerMonth' ||
       summaryContent.type === 'avgPerYear'
     ) {
@@ -123,6 +141,18 @@ export function summarySpreadsheet(
     } catch (error) {
       console.error('Error executing query:', error);
       return;
+    }
+    // [fork:mc D-015]
+    if (conversion) {
+      data = {
+        ...data,
+        data: convertSummaryRows(
+          data.data,
+          conversion,
+          summaryContent.type === 'avgPerMonth' ||
+            summaryContent.type === 'avgPerYear',
+        ),
+      };
     }
 
     const dateRanges = {
@@ -174,6 +204,7 @@ export function summarySpreadsheet(
             summaryContent,
             startDay,
             endDay,
+            conversion,
           )),
         });
         break;
@@ -182,6 +213,31 @@ export function summarySpreadsheet(
         throw new Error(`Unsupported summary type`);
     }
   };
+}
+
+/**
+ * [fork:mc D-015] Days' sums in the display currency, each at its month's
+ * rate; added up into one row unless the summary works per day.
+ */
+function convertSummaryRows(
+  rows: Array<{ date: string; amount: number; count: number }>,
+  conversion: McFlowConversion,
+  isPerDay: boolean,
+) {
+  const days = rows.map(day => ({
+    ...day,
+    amount: conversion.convert(day.date.slice(0, 7), day.amount ?? 0),
+  }));
+  if (isPerDay) {
+    return days;
+  }
+  return [
+    {
+      date: days[0]?.date,
+      amount: days.reduce((sum, day) => sum + day.amount, 0),
+      count: days.reduce((sum, day) => sum + (day.count ?? 0), 0),
+    },
+  ];
 }
 
 function calculatePerMonth(
@@ -260,6 +316,8 @@ async function calculatePercentage(
   summaryContent: SummaryContent,
   startDay: Date,
   endDay: Date,
+  // [fork:mc D-015]
+  conversion: McFlowConversion | null = null,
 ) {
   if (summaryContent.type !== 'percentage') {
     return {
@@ -296,6 +354,12 @@ async function calculatePercentage(
       .select([{ amount: { $sum: '$amount' } }]);
 
   let query = makeDivisorQuery();
+  // [fork:mc D-015] Converted day by day
+  if (conversion) {
+    query = query
+      .groupBy(['date'])
+      .select(['date', { amount: { $sum: '$amount' } }]);
+  }
 
   if (!(summaryContent.divisorAllTimeDateRange ?? false)) {
     query = query.filter({
@@ -326,7 +390,13 @@ async function calculatePercentage(
     };
   }
 
-  const divisorValue = divisorData?.data?.[0]?.amount ?? 0;
+  const divisorValue = conversion
+    ? (divisorData.data as Array<{ date: string; amount: number }>).reduce(
+        (sum, day) =>
+          sum + conversion.convert(day.date.slice(0, 7), day.amount ?? 0),
+        0,
+      )
+    : (divisorData?.data?.[0]?.amount ?? 0);
 
   const dividend = data.reduce((prev, ac) => prev + (ac?.amount ?? 0), 0);
   return {

@@ -29,6 +29,9 @@ import { FilterButton } from '#components/filters/FiltersMenu';
 import { FinancialText } from '#components/FinancialText';
 import { Checkbox } from '#components/forms';
 import { MobileBackButton } from '#components/mobile/MobileBackButton';
+// [fork:mc D-015]
+import { McReportCurrencyProvider } from '#components/multi-currency/McReportCurrencyProvider';
+import { McReportCurrencySelect } from '#components/multi-currency/McReportCurrencySelect';
 import { MobilePageHeader, Page, PageHeader } from '#components/Page';
 import { PrivacyFilter } from '#components/PrivacyFilter';
 import { Header } from '#components/reports/Header';
@@ -41,6 +44,8 @@ import { FieldSelect } from '#components/rules/RuleEditor';
 import { useDashboardWidget } from '#hooks/useDashboardWidget';
 import { useFormat } from '#hooks/useFormat';
 import { useLocale } from '#hooks/useLocale';
+// [fork:mc D-015]
+import { useMcReportCurrencyContext } from '#hooks/useMcReportCurrency';
 import { useNavigate } from '#hooks/useNavigate';
 import { useRuleConditionFilters } from '#hooks/useRuleConditionFilters';
 import { useSyncedPref } from '#hooks/useSyncedPref';
@@ -59,7 +64,12 @@ export function Summary() {
     return <LoadingIndicator />;
   }
 
-  return <SummaryInner widget={widget} />;
+  // [fork:mc D-015] Can be shown in another currency
+  return (
+    <McReportCurrencyProvider>
+      <SummaryInner widget={widget} />
+    </McReportCurrencyProvider>
+  );
 }
 
 type SummaryInnerProps = {
@@ -70,6 +80,8 @@ type FilterObject = ReturnType<typeof useRuleConditionFilters>;
 
 function SummaryInner({ widget }: SummaryInnerProps) {
   const locale = useLocale();
+  // [fork:mc D-015]
+  const mcValuation = useMcReportCurrencyContext()?.valuation ?? null;
   const { t } = useTranslation();
   const format = useFormat();
 
@@ -122,6 +134,7 @@ function SummaryInner({ widget }: SummaryInnerProps) {
         dividendFilters.conditionsOp,
         content,
         locale,
+        mcValuation,
       ),
     [
       start,
@@ -130,6 +143,7 @@ function SummaryInner({ widget }: SummaryInnerProps) {
       dividendFilters.conditionsOp,
       content,
       locale,
+      mcValuation,
     ],
   );
 
@@ -365,6 +379,8 @@ function SummaryInner({ widget }: SummaryInnerProps) {
         onChangeDates={onChangeDates}
         show1Month
       >
+        {/* [fork:mc D-015] */}
+        <McReportCurrencySelect />
         {widget && (
           <Button variant="primary" onPress={onSaveWidget}>
             <Trans>Save widget</Trans>

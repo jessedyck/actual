@@ -41,15 +41,22 @@ the fork can switch to upstream's own implementation as it lands.
 | Net worth report: accounts valued at each period's rate, shown in any currency | Done    |
 | Cash flow report (page and card) in any currency                               | Done    |
 | Custom and spending reports (pages and cards) in any currency                  | Done    |
+| Summary and calendar cards, one currency picker for the whole dashboard        | Done    |
 | A currency on each budget (per category and month), month rates                | Done    |
 | Changing the default currency (for example CAD to EUR), keeping past budgets   | Done    |
-| Other reports (summary, budget analysis, calendar…) in another currency        | Planned |
+| Other reports (budget analysis, Sankey, crossover…) in another currency        | Planned |
 
 ## Log
 
 What was done, newest first. All of it was implemented by an AI assistant;
 [DEVIATIONS.md](DEVIATIONS.md) has the details of every change.
 
+- **2026-10-19** · Changing an account's currency can convert its amounts
+  or keep their numbers (for an account set up in the wrong currency), and
+  shows the current currency; the mobile account list can show its totals
+  in another currency at today's rate; the mobile reconcile prompt names
+  the currency; the reports dashboard has one currency picker, and summary
+  and calendar cards follow it too.
 - **2026-10-16** · A currency on each budget: each category's budget in
   each month can be in its own currency (budget menu → _Currency_), and
   counts spending in it at the month's average rate; group totals and To
@@ -58,6 +65,7 @@ What was done, newest first. All of it was implemented by an AI assistant;
   _Change budget currency_: budgets and accounts without a currency of their
   own can keep the old one, so past months show what they showed. Wording:
   "default currency" and "budget file".
+  [3c73885](https://github.com/jessedyck/actual/commit/3c73885)
 - **2026-10-15** · Review round 2: All accounts (and other views of several
   accounts) shows each transaction in its own account's currency with the
   currency symbol; an info button on a foreign account explains "Worth

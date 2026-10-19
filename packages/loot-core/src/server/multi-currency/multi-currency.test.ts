@@ -6,6 +6,7 @@ import { batchUpdateTransactions } from '#server/transactions';
 import type { TransactionEntity } from '#types/models';
 
 import {
+  getAccountTotals,
   getStartingBalanceAmounts,
   normalizeAccountCurrency,
   parseWorkaroundNote,
@@ -511,5 +512,75 @@ describe('account currency', () => {
     // Back to the budget currency clears them again
     await setAccountCurrency({ id: 'eur', currency: 'EUR' });
     expect((await getTransaction('noted'))?.mc_amount).toBeNull();
+  });
+
+  it('can keep the numbers of an account set up in the wrong currency', async () => {
+    await enable();
+    await setupAccounts();
+    await batchUpdateTransactions({
+      added: [
+        tx({ id: 'coffee', account: 'eur', amount: -1000 }),
+        tx({
+          id: 'sent',
+          account: 'usd',
+          amount: 0,
+          mc_amount: -1000,
+          payee: await transferPayee('eur'),
+        }),
+      ],
+    });
+    const received = (await getTransaction('sent'))?.transfer_id as string;
+    expect(await getTransaction(received)).toMatchObject({ amount: 900 });
+
+    expect(
+      await setAccountCurrency({ id: 'eur', currency: 'CAD', convert: false }),
+    ).toEqual({ updated: 2, missingRates: 0 });
+    // 10,00 stays 10,00, now in CAD, worth 6,00 EUR at October's rate
+    expect(await getTransaction('coffee')).toMatchObject({
+      amount: -600,
+      mc_amount: -1000,
+    });
+    // The transfer keeps the value the USD side sent
+    expect(await getTransaction(received)).toMatchObject({
+      amount: 900,
+      mc_amount: 900,
+    });
+
+    // And back: the CAD numbers become EUR numbers
+    await setAccountCurrency({ id: 'eur', currency: 'EUR', convert: false });
+    expect(await getTransaction('coffee')).toMatchObject({
+      amount: -1000,
+      mc_amount: null,
+    });
+    expect(await getTransaction(received)).toMatchObject({
+      amount: 900,
+      mc_amount: null,
+    });
+  });
+
+  it("adds up account balances in another currency at today's rate", async () => {
+    await enable();
+    await setupAccounts();
+    await setManualRate({
+      date: '2016-12-30',
+      base: 'CAD',
+      quote: 'EUR',
+      rate: 0.5,
+    });
+    await db.insertAccount({ id: 'old', name: 'old', closed: 1 });
+    await batchUpdateTransactions({
+      added: [
+        tx({ id: 'e', account: 'eur', amount: 10000 }),
+        tx({ id: 'c', account: 'cad', amount: 0, mc_amount: 20000 }),
+        tx({ id: 'o', account: 'old', amount: 500 }),
+      ],
+    });
+    // 100,00 EUR is 200,00 CAD today, plus 200,00 CAD
+    expect(await getAccountTotals({ currency: 'CAD' })).toEqual({
+      all: 40000,
+      onBudget: 40000,
+      offBudget: 0,
+      closed: 1000,
+    });
   });
 });

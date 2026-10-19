@@ -31,6 +31,11 @@ import { makeAmountFullStyle } from '#components/budget/util';
 import { MOBILE_NAV_HEIGHT } from '#components/mobile/MobileNavTabs';
 import { PullToRefresh } from '#components/mobile/PullToRefresh';
 // [fork:mc D-012]
+import {
+  McAccountTotal,
+  McAccountTotalsProvider,
+  McAccountTotalsSelect,
+} from '#components/multi-currency/McAccountTotals';
 import { McCellValue } from '#components/multi-currency/McCellValue';
 import { MobilePageHeader, Page } from '#components/Page';
 import { CellValue, CellValueText } from '#components/spreadsheet/CellValue';
@@ -55,6 +60,8 @@ type AccountHeaderProps<SheetFieldName extends SheetFields<'account'>> = {
   style?: CSSProperties;
   showCheveronDown?: boolean;
   onPress?: () => void;
+  // [fork:mc D-012] Which total, to show it in another currency
+  mcTotal?: 'all' | 'onBudget' | 'offBudget' | 'closed';
 };
 
 function AccountHeader<SheetFieldName extends SheetFields<'account'>>({
@@ -64,6 +71,7 @@ function AccountHeader<SheetFieldName extends SheetFields<'account'>>({
   style = {},
   showCheveronDown = false,
   onPress,
+  mcTotal,
 }: AccountHeaderProps<SheetFieldName>) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -106,14 +114,17 @@ function AccountHeader<SheetFieldName extends SheetFields<'account'>>({
           height={styles.text.fontSize}
         />
       </View>
-      <CellValue binding={amount} type="financial">
-        {props => (
-          <CellValueText<'account', SheetFieldName>
-            {...props}
-            style={{ ...styles.text }}
-          />
-        )}
-      </CellValue>
+      {/* [fork:mc D-012] Or in the chosen currency at today's rate */}
+      <McAccountTotal kind={mcTotal}>
+        <CellValue binding={amount} type="financial">
+          {props => (
+            <CellValueText<'account', SheetFieldName>
+              {...props}
+              style={{ ...styles.text }}
+            />
+          )}
+        </CellValue>
+      </McAccountTotal>
     </Button>
   );
 }
@@ -345,6 +356,8 @@ function AllAccountList({
       header={
         <MobilePageHeader
           title={t('Accounts')}
+          // [fork:mc D-012] The currency of the totals
+          leftContent={<McAccountTotalsSelect />}
           rightContent={
             <Button
               variant="bare"
@@ -363,63 +376,70 @@ function AllAccountList({
         <EmptyMessage onAddAccount={onAddAccount} />
       ) : (
         <PullToRefresh onRefresh={onSync}>
-          <View
-            aria-label={t('Account list')}
-            style={{ paddingBottom: MOBILE_NAV_HEIGHT }}
-          >
-            <AccountHeader
-              id={ALL_ACCOUNTS_ID}
-              name={t('All accounts')}
-              amount={getAllAccountsBalance()}
-            />
-            {onBudgetAccounts.length > 0 && (
+          {/* [fork:mc D-012] Totals in another currency */}
+          <McAccountTotalsProvider>
+            <View
+              aria-label={t('Account list')}
+              style={{ paddingBottom: MOBILE_NAV_HEIGHT }}
+            >
               <AccountHeader
-                id="onbudget"
-                name={t('On budget')}
-                amount={getOnBudgetBalance()}
+                id={ALL_ACCOUNTS_ID}
+                name={t('All accounts')}
+                amount={getAllAccountsBalance()}
+                mcTotal="all"
               />
-            )}
-            <AccountList
-              aria-label={t('On budget accounts')}
-              accounts={onBudgetAccounts}
-              getAccountBalance={getAccountBalance}
-              onOpenAccount={onOpenAccount}
-            />
-            {offBudgetAccounts.length > 0 && (
-              <AccountHeader
-                id="offbudget"
-                name={t('Off budget')}
-                amount={getOffBudgetBalance()}
-              />
-            )}
-            <AccountList
-              aria-label={t('Off budget accounts')}
-              accounts={offBudgetAccounts}
-              getAccountBalance={getAccountBalance}
-              onOpenAccount={onOpenAccount}
-            />
-            {closedAccounts.length > 0 && (
-              <AccountHeader
-                id="closed"
-                name={t('Closed')}
-                onPress={onToggleClosedAccounts}
-                amount={getClosedAccountsBalance()}
-                style={{ marginTop: 30 }}
-                showCheveronDown={showClosedAccounts}
-              />
-            )}
-            {showClosedAccounts && (
+              {onBudgetAccounts.length > 0 && (
+                <AccountHeader
+                  id="onbudget"
+                  name={t('On budget')}
+                  amount={getOnBudgetBalance()}
+                  mcTotal="onBudget"
+                />
+              )}
               <AccountList
-                aria-label={t('Closed accounts')}
-                accounts={closedAccounts}
+                aria-label={t('On budget accounts')}
+                accounts={onBudgetAccounts}
                 getAccountBalance={getAccountBalance}
                 onOpenAccount={onOpenAccount}
-                ref={el => {
-                  if (el) closedAccountsRef.current = el;
-                }}
               />
-            )}
-          </View>
+              {offBudgetAccounts.length > 0 && (
+                <AccountHeader
+                  id="offbudget"
+                  name={t('Off budget')}
+                  amount={getOffBudgetBalance()}
+                  mcTotal="offBudget"
+                />
+              )}
+              <AccountList
+                aria-label={t('Off budget accounts')}
+                accounts={offBudgetAccounts}
+                getAccountBalance={getAccountBalance}
+                onOpenAccount={onOpenAccount}
+              />
+              {closedAccounts.length > 0 && (
+                <AccountHeader
+                  id="closed"
+                  name={t('Closed')}
+                  onPress={onToggleClosedAccounts}
+                  amount={getClosedAccountsBalance()}
+                  style={{ marginTop: 30 }}
+                  showCheveronDown={showClosedAccounts}
+                  mcTotal="closed"
+                />
+              )}
+              {showClosedAccounts && (
+                <AccountList
+                  aria-label={t('Closed accounts')}
+                  accounts={closedAccounts}
+                  getAccountBalance={getAccountBalance}
+                  onOpenAccount={onOpenAccount}
+                  ref={el => {
+                    if (el) closedAccountsRef.current = el;
+                  }}
+                />
+              )}
+            </View>
+          </McAccountTotalsProvider>
         </PullToRefresh>
       )}
     </Page>

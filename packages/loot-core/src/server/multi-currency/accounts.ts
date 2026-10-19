@@ -2,12 +2,13 @@
 import * as db from '#server/db';
 import { batchMessages } from '#server/sync';
 import { getDecimalPlaces } from '#shared/currencies';
-import { isCurrencyCode } from '#shared/multi-currency';
+import * as monthUtils from '#shared/months';
+import { convertMinorUnits, isCurrencyCode } from '#shared/multi-currency';
 import { amountToInteger } from '#shared/util';
 
 import { getBudgetValue, getBudgetValueUpdates } from './budget-currency';
 import { createMonthRateLookup, loadBudgetCurrencies } from './month-rates';
-import { getMultiCurrencyContext } from './rates';
+import { convertAmount, getMultiCurrencyContext } from './rates';
 import { loadForeignAccounts } from './transactions';
 
 /**
@@ -88,10 +89,11 @@ type BackfillRow = {
   parent_id: string | null;
   category: string | null;
   mc_budget_amount: number | null;
+  transfer_id: string | null;
 };
 
 const BACKFILL_FIELDS =
-  'id, amount, mc_amount, date, notes, is_parent, parent_id, category, mc_budget_amount';
+  'id, amount, mc_amount, date, notes, is_parent, parent_id, category, mc_budget_amount, transfer_id';
 
 /**
  * Converting split parents and children one by one can leave the children a
@@ -130,18 +132,132 @@ export function balanceSplits(
 }
 
 /**
- * Sets an account's currency and fills in account-currency amounts for its
- * existing transactions: from workaround notes when present, otherwise by
- * converting the budget amount at the rate of each transaction's month.
- * Setting the budget currency (or null) clears them. [fork:mc D-017] Values
- * counted in budgets of another currency follow the new account amounts.
+ * An account's amounts keep their numbers in another currency: `from`'s
+ * minor units become `to`'s, and the value in the default currency is
+ * worked out again at each month's rate. A split's value is the sum of its
+ * children's; a transfer keeps the value of the other account's side.
+ */
+async function keepAccountNumbers({
+  id,
+  rows,
+  from,
+  to,
+  lookup,
+}: {
+  id: string;
+  rows: BackfillRow[];
+  from: string;
+  to: string;
+  lookup: ReturnType<typeof createMonthRateLookup>;
+}): Promise<{ updates: AccountCurrencyUpdate[]; missingRates: number }> {
+  const { budgetCurrency } = await getMultiCurrencyContext();
+  let missingRates = 0;
+  const own = new Map<string, number | null>();
+  for (const row of rows) {
+    const value =
+      from === budgetCurrency
+        ? row.amount
+        : (row.mc_amount ??
+          (await lookup.convert(
+            row.amount,
+            db.fromDateRepr(row.date),
+            budgetCurrency,
+            from,
+          )));
+    own.set(
+      row.id,
+      value == null ? null : convertMinorUnits(value, 1, from, to),
+    );
+  }
+  balanceSplits(rows, own);
+
+  const amounts = new Map<string, number>();
+  for (const row of rows) {
+    const value = own.get(row.id);
+    if (value == null) {
+      missingRates++;
+      continue;
+    }
+    const amount = await lookup.convert(
+      value,
+      db.fromDateRepr(row.date),
+      to,
+      budgetCurrency,
+    );
+    if (amount == null) {
+      missingRates++;
+    }
+    amounts.set(row.id, amount ?? 0);
+  }
+  for (const parent of rows.filter(row => row.is_parent === 1)) {
+    const children = rows.filter(row => row.parent_id === parent.id);
+    if (children.length > 0) {
+      amounts.set(
+        parent.id,
+        children.reduce((sum, child) => sum + (amounts.get(child.id) ?? 0), 0),
+      );
+    }
+  }
+  const transfers = rows.filter(row => row.transfer_id);
+  if (transfers.length > 0) {
+    const others = await db.all<{
+      id: string;
+      account: string;
+      amount: number;
+    }>(
+      `SELECT id, account, amount FROM v_transactions_internal_alive
+        WHERE id IN (${transfers.map(() => '?').join(', ')})`,
+      transfers.map(row => row.transfer_id as string),
+    );
+    const otherById = new Map(others.map(row => [row.id, row]));
+    for (const row of transfers) {
+      const other = otherById.get(row.transfer_id as string);
+      if (other && other.account !== id) {
+        amounts.set(row.id, -other.amount);
+      }
+    }
+  }
+
+  const updates: AccountCurrencyUpdate[] = [];
+  for (const row of rows) {
+    const value = own.get(row.id);
+    if (value == null) {
+      continue;
+    }
+    updates.push({
+      id: row.id,
+      amount: amounts.get(row.id) ?? row.amount,
+      mc_amount: to === budgetCurrency ? null : value,
+    });
+  }
+  return { updates, missingRates };
+}
+
+type AccountCurrencyUpdate = {
+  id: string;
+  amount?: number;
+  mc_amount: number | null;
+  mc_budget_amount?: number | null;
+};
+
+/**
+ * Sets an account's currency. With `convert` (the default) its transactions
+ * keep their value in the default currency and get amounts in the new
+ * currency: from workaround notes when present, otherwise converted at the
+ * rate of each transaction's month. Without it, they keep their numbers,
+ * now read in the new currency (an account set up in the wrong currency),
+ * and their default-currency value is worked out again; a transfer keeps
+ * matching the other account. [fork:mc D-017] Values counted in budgets of
+ * another currency follow the new account amounts.
  */
 export async function setAccountCurrency({
   id,
   currency,
+  convert = true,
 }: {
   id: string;
   currency: string | null;
+  convert?: boolean;
 }): Promise<{ updated: number; missingRates: number }> {
   const { enabled, budgetCurrency } = await getMultiCurrencyContext();
   if (!enabled) {
@@ -151,6 +267,11 @@ export async function setAccountCurrency({
     throw new Error(`Invalid currency: ${JSON.stringify(currency)}`);
   }
   const code = currency && currency !== budgetCurrency ? currency : null;
+  const accountRow = await db.first<
+    Pick<db.DbAccount, 'offbudget' | 'mc_currency'>
+  >('SELECT offbudget, mc_currency FROM accounts WHERE id = ?', [id]);
+  const from = accountRow?.mc_currency || budgetCurrency;
+  const to = code ?? budgetCurrency;
 
   const rows = await db.all<BackfillRow>(
     `SELECT ${BACKFILL_FIELDS} FROM v_transactions_internal_alive
@@ -158,14 +279,14 @@ export async function setAccountCurrency({
     [id],
   );
 
-  const updates: Array<{
-    id: string;
-    mc_amount: number | null;
-    mc_budget_amount?: number | null;
-  }> = [];
+  let updates: AccountCurrencyUpdate[] = [];
   let missingRates = 0;
   const lookup = createMonthRateLookup();
-  if (code) {
+  if (!convert && from !== to) {
+    const kept = await keepAccountNumbers({ id, rows, from, to, lookup });
+    updates = kept.updates;
+    missingRates = kept.missingRates;
+  } else if (code) {
     const values = new Map<string, number | null>();
     for (const row of rows) {
       const fromNote = parseWorkaroundNote(row.notes, code);
@@ -195,10 +316,6 @@ export async function setAccountCurrency({
   // [fork:mc D-017] Values counted in budgets of another currency
   const context = await getMultiCurrencyContext();
   const budgets = await loadBudgetCurrencies();
-  const accountRow = await db.first<Pick<db.DbAccount, 'offbudget'>>(
-    'SELECT offbudget FROM accounts WHERE id = ?',
-    [id],
-  );
   const byId = new Map(rows.map(row => [row.id, row]));
   for (const update of updates) {
     const row = byId.get(update.id) as BackfillRow;
@@ -212,7 +329,7 @@ export async function setAccountCurrency({
       isOffBudget: accountRow?.offbudget === 1,
       category: row.category,
       date: db.fromDateRepr(row.date),
-      amount: row.amount,
+      amount: update.amount ?? row.amount,
       mcAmount: update.mc_amount,
       lookup,
     });
@@ -315,4 +432,66 @@ export async function recomputePending(): Promise<{
     });
   }
   return { updated: updates.length + budgetUpdates.length, stillPending };
+}
+
+export type AccountTotals = {
+  all: number;
+  onBudget: number;
+  offBudget: number;
+  closed: number;
+};
+
+/**
+ * Account totals in `currency`: each account's balance in its own currency
+ * at today's rate, added up like upstream's totals (All accounts, On budget
+ * and Off budget leave closed accounts out). Null while multi-currency is
+ * off; an account whose currency has no rate yet counts as 0.
+ */
+export async function getAccountTotals({
+  currency,
+}: {
+  currency: string;
+}): Promise<AccountTotals | null> {
+  const { enabled, budgetCurrency } = await getMultiCurrencyContext();
+  if (!enabled || !isCurrencyCode(currency)) {
+    return null;
+  }
+  const rows = await db.all<{
+    mc_currency: string | null;
+    offbudget: 0 | 1;
+    closed: 0 | 1;
+    amount: number | null;
+    mc_amount: number | null;
+  }>(
+    `SELECT a.mc_currency, a.offbudget, a.closed,
+        SUM(t.amount) AS amount, SUM(t.mc_amount) AS mc_amount
+      FROM accounts a
+      LEFT JOIN v_transactions_internal_alive t
+        ON t.account = a.id AND t.is_parent = 0
+      WHERE a.tombstone = 0
+      GROUP BY a.id`,
+  );
+  const today = monthUtils.currentDay();
+  const totals: AccountTotals = {
+    all: 0,
+    onBudget: 0,
+    offBudget: 0,
+    closed: 0,
+  };
+  for (const row of rows) {
+    const own = row.mc_currency || budgetCurrency;
+    const balance = (own === budgetCurrency ? row.amount : row.mc_amount) ?? 0;
+    const value = (await convertAmount(balance, today, own, currency)) ?? 0;
+    if (row.closed === 1) {
+      totals.closed += value;
+      continue;
+    }
+    totals.all += value;
+    if (row.offbudget === 1) {
+      totals.offBudget += value;
+    } else {
+      totals.onBudget += value;
+    }
+  }
+  return totals;
 }

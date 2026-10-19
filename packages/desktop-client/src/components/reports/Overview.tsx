@@ -23,6 +23,8 @@ import type {
 } from '@actual-app/core/types/models';
 
 import { MOBILE_NAV_HEIGHT } from '#components/mobile/MobileNavTabs';
+// [fork:mc D-015]
+import { McDashboardCurrencySelect } from '#components/multi-currency/McDashboardCurrencySelect';
 import { MobilePageHeader, Page } from '#components/Page';
 import { useAccounts } from '#hooks/useAccounts';
 import {
@@ -494,6 +496,8 @@ export function Overview({ dashboard }: OverviewProps) {
                 dashboards={dashboardPages}
                 currentDashboard={dashboard}
               />
+              {/* [fork:mc D-015] One currency for the dashboard */}
+              <McDashboardCurrencySelect />
             </View>
           </View>
         ) : (
@@ -517,6 +521,9 @@ export function Overview({ dashboard }: OverviewProps) {
             >
               {currentBreakpoint === 'desktop' && (
                 <>
+                  {/* [fork:mc D-015] One currency for the dashboard */}
+                  <McDashboardCurrencySelect />
+
                   {/* Dashboard Selector */}
                   <DashboardSelector
                     dashboards={dashboardPages}
