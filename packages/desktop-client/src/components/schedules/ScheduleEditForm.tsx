@@ -22,6 +22,8 @@ import type {
 } from '@actual-app/core/types/models';
 
 import { Checkbox, FormField, FormLabel } from '#components/forms';
+// [fork:mc D-018]
+import { McAccountCurrencyFormat } from '#components/multi-currency/McAccountCurrencyFormat';
 import { OpSelect } from '#components/rules/RuleEditor';
 import { CustomUpcomingLength } from '#components/schedules/CustomUpcomingLength';
 import { DateSelect } from '#components/select/DateSelect';
@@ -32,6 +34,7 @@ import { AmountInput, BetweenAmountInput } from '#components/util/AmountInput';
 import { GenericInput } from '#components/util/GenericInput';
 import { useDateFormat } from '#hooks/useDateFormat';
 import { useLocale } from '#hooks/useLocale';
+import { useAccountCurrencyOf } from '#hooks/useMultiCurrency';
 import { SelectedProvider } from '#hooks/useSelected';
 import type { Actions } from '#hooks/useSelected';
 
@@ -121,6 +124,8 @@ export function ScheduleEditForm({
   const { t } = useTranslation();
   const dateFormat = useDateFormat() || 'MM/dd/yyyy';
   const { isNarrowWidth } = useResponsive();
+  // [fork:mc D-018] A schedule's amount is in its account's currency
+  const mcCurrency = useAccountCurrencyOf()(fields.account);
 
   return (
     <>
@@ -182,7 +187,12 @@ export function ScheduleEditForm({
           <FormField style={{ flex: 1, gridColumn: '1 / -1' }}>
             <SpaceBetween style={{ marginBottom: 3, alignItems: 'center' }}>
               <FormLabel
-                title={t('Amount')}
+                title={
+                  // [fork:mc D-018] In the account's currency
+                  mcCurrency
+                    ? t('Amount ({{currency}})', { currency: mcCurrency })
+                    : t('Amount')
+                }
                 htmlFor="amount-field"
                 style={{ margin: 0, flex: 1 }}
               />
@@ -215,32 +225,35 @@ export function ScheduleEditForm({
                 }
               />
             </SpaceBetween>
-            {fields.amountOp === 'isbetween' ? (
-              <BetweenAmountInput
-                // @ts-expect-error fix me
-                defaultValue={fields.amount}
-                onChange={value =>
-                  dispatch({
-                    type: 'set-field',
-                    field: 'amount',
-                    value,
-                  })
-                }
-              />
-            ) : (
-              <AmountInput
-                id="amount-field"
-                // @ts-expect-error fix me
-                value={fields.amount}
-                onUpdate={value =>
-                  dispatch({
-                    type: 'set-field',
-                    field: 'amount',
-                    value,
-                  })
-                }
-              />
-            )}
+            {/* [fork:mc D-018] In the account's currency */}
+            <McAccountCurrencyFormat accountId={fields.account}>
+              {fields.amountOp === 'isbetween' ? (
+                <BetweenAmountInput
+                  // @ts-expect-error fix me
+                  defaultValue={fields.amount}
+                  onChange={value =>
+                    dispatch({
+                      type: 'set-field',
+                      field: 'amount',
+                      value,
+                    })
+                  }
+                />
+              ) : (
+                <AmountInput
+                  id="amount-field"
+                  // @ts-expect-error fix me
+                  value={fields.amount}
+                  onUpdate={value =>
+                    dispatch({
+                      type: 'set-field',
+                      field: 'amount',
+                      value,
+                    })
+                  }
+                />
+              )}
+            </McAccountCurrencyFormat>
           </FormField>
         </SpaceBetween>
 

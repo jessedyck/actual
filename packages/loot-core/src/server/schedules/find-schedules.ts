@@ -5,6 +5,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { aqlQuery } from '#server/aql';
 import * as db from '#server/db';
 import { fromDateRepr } from '#server/models';
+// [fork:mc D-018]
+import { withAccountAmount } from '#server/multi-currency/rules';
 import { conditionsToAQL } from '#server/transactions/transaction-rules';
 import { RSchedule } from '#server/util/rschedule';
 import { dayFromDate, parseDate } from '#shared/months';
@@ -37,7 +39,8 @@ async function getTransactions(date, account) {
       .select('*')
       .options({ splits: 'none' }),
   );
-  return data;
+  // [fork:mc D-018] Amounts in the account's currency, like schedules
+  return data.map(withAccountAmount);
 }
 
 function getRank(day1, day2) {

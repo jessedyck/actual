@@ -24,7 +24,9 @@ import * as monthUtils from '#shared/months';
 import {
   convertMinorUnits,
   getBudgetCurrencyAt,
+  hundredthsToMinorUnits,
   MC_PREF_CURRENCY_PERIODS,
+  minorUnitsToHundredths,
   roundHalfAwayFromZero,
 } from '#shared/multi-currency';
 import type { CurrencyPeriod } from '#shared/multi-currency';
@@ -726,10 +728,19 @@ export async function setDefaultCurrency({
     const source = before(ruleAccountIds[0]);
     const rates = await getRatesAt(source, target, [today]);
     const rate = rates[today];
+    // Rule amounts count hundredths whatever the currency (D-018)
     if (
       rate != null &&
       convertRuleAmounts(rule, amount =>
-        convertMinorUnits(amount, rate, source, target),
+        minorUnitsToHundredths(
+          convertMinorUnits(
+            hundredthsToMinorUnits(amount, source),
+            rate,
+            source,
+            target,
+          ),
+          target,
+        ),
       )
     ) {
       convertedRules.push(rule);

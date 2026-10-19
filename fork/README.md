@@ -44,6 +44,7 @@ the fork can switch to upstream's own implementation as it lands.
 | Summary and calendar cards, one currency picker for the whole dashboard        | Done    |
 | A currency on each budget (per category and month), month rates                | Done    |
 | Changing the default currency (for example CAD to EUR), keeping past budgets   | Done    |
+| Rules and schedules in the account's currency                                  | Done    |
 | Other reports (budget analysis, Sankey, crossover…) in another currency        | Planned |
 
 ## Log
@@ -51,12 +52,19 @@ the fork can switch to upstream's own implementation as it lands.
 What was done, newest first. All of it was implemented by an AI assistant;
 [DEVIATIONS.md](DEVIATIONS.md) has the details of every change.
 
+- **2026-10-19** · Rules and schedules count amounts in the account's
+  currency: a 1.900,00 CA$ mortgage schedule on a CAD account keeps posting
+  1.900,00 CA$ after the default currency changes, and rules compare, set
+  and split that amount. Schedules, rules and their transaction lists show
+  amounts in that currency; the balance forecast converts them at each
+  month's rate.
 - **2026-10-19** · Changing an account's currency can convert its amounts
   or keep their numbers (for an account set up in the wrong currency), and
   shows the current currency; the mobile account list can show its totals
   in another currency at today's rate; the mobile reconcile prompt names
   the currency; the reports dashboard has one currency picker, and summary
   and calendar cards follow it too.
+  [e99d04c](https://github.com/jessedyck/actual/commit/e99d04c)
 - **2026-10-16** · A currency on each budget: each category's budget in
   each month can be in its own currency (budget menu → _Currency_), and
   counts spending in it at the month's average rate; group totals and To

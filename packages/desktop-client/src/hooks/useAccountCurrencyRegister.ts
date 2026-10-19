@@ -140,6 +140,11 @@ export function useAccountCurrencyRegister(
             currency,
           )
         : null;
+    // [fork:mc D-018] What a schedule preview is worth today
+    const estimateBudget = (accountAmount: number) =>
+      rateValue
+        ? convertMinorUnits(accountAmount, rateValue, currency, budgetCurrency)
+        : null;
 
     if (!isForeign) {
       // Same arrays back, so upstream renders exactly as before
@@ -162,7 +167,11 @@ export function useAccountCurrencyRegister(
       currencyFor: () => currency,
       toView: transactions =>
         transactions.map(transaction =>
-          toAccountCurrencyView(transaction, { currency, estimate }),
+          toAccountCurrencyView(transaction, {
+            currency,
+            estimate,
+            estimateBudget,
+          }),
         ),
       fromView: transactions =>
         transactions.map(transaction =>
@@ -210,6 +219,14 @@ function mixedRegister(
           convertMinorUnits(budgetAmount, 1 / rate, budgetCurrency, code)
       : undefined;
   };
+  // [fork:mc D-018] What a schedule preview is worth today
+  const estimateBudgetFor = (code: string) => {
+    const rate = todayRates[code];
+    return rate
+      ? (accountAmount: number) =>
+          convertMinorUnits(accountAmount, rate, code, budgetCurrency)
+      : undefined;
+  };
   const remember = (transaction: TransactionEntity) => {
     if (transaction.id && transaction.account) {
       accountById.set(transaction.id, transaction.account);
@@ -229,6 +246,7 @@ function mixedRegister(
           ? toAccountCurrencyView(transaction, {
               currency: code,
               estimate: estimateFor(code),
+              estimateBudget: estimateBudgetFor(code),
             })
           : transaction;
       }),

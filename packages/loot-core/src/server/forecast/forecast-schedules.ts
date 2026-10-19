@@ -2,6 +2,12 @@ import { format } from 'date-fns';
 
 import { aqlQuery } from '#server/aql';
 import * as db from '#server/db';
+// [fork:mc D-018]
+import { createMonthRateLookup } from '#server/multi-currency/month-rates';
+import {
+  getForecastTransactionAmounts,
+  getForeignCurrency,
+} from '#server/multi-currency/rules';
 import { runRules } from '#server/transactions/transaction-rules';
 import * as monthUtils from '#shared/months';
 import { q } from '#shared/query';
@@ -190,6 +196,8 @@ export async function buildFutureScheduleOccurrences(
     ...ruleAccountsById.keys(),
   ]);
   const payeesById = new Map<string, Awaited<ReturnType<typeof db.getPayee>>>();
+  // [fork:mc D-018] Schedule amounts are in their account's currency
+  const mcLookup = createMonthRateLookup({ allowFetch: false });
   const simulatedTransactions: TransactionEntity[] = [];
   const occurrences: Array<{
     accountId: string;
@@ -217,7 +225,14 @@ export async function buildFutureScheduleOccurrences(
       const baseTransaction: TransactionEntity = {
         id: `forecast-${schedule.id}-${date}`,
         account: schedule._account,
-        amount: schedule._amount,
+        // [fork:mc D-018] Its value in the default currency at the month's
+        // rate, which the forecast adds up
+        ...(await getForecastTransactionAmounts(
+          schedule._amount,
+          getForeignCurrency(schedule._account, ruleAccountsById),
+          date,
+          mcLookup,
+        )),
         payee: schedule._payee,
         date,
         schedule: schedule.id,

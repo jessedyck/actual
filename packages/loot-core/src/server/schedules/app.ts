@@ -10,6 +10,11 @@ import { createApp } from '#server/app';
 import { aqlQuery } from '#server/aql';
 import * as db from '#server/db';
 import { toDateRepr } from '#server/models';
+// [fork:mc D-018]
+import {
+  getForeignCurrency,
+  getScheduledTransactionAmounts,
+} from '#server/multi-currency/rules';
 import { mutator, runMutator } from '#server/mutators';
 import * as prefs from '#server/prefs';
 import { Rule } from '#server/rules';
@@ -585,10 +590,19 @@ async function postTransactionForSchedule({
     return;
   }
 
+  // [fork:mc D-018] A schedule's amount is in its account's currency
+  const accounts = await db.getAccounts();
+  const currency = getForeignCurrency(
+    schedule._account,
+    new Map(accounts.map(account => [account.id, account])),
+  );
   const transaction = {
     payee: schedule._payee,
     account: schedule._account,
-    amount: getScheduledAmount(schedule._amount),
+    ...getScheduledTransactionAmounts(
+      getScheduledAmount(schedule._amount),
+      currency,
+    ),
     date: today ? currentDay() : schedule.next_date,
     schedule: schedule.id,
     cleared: false,

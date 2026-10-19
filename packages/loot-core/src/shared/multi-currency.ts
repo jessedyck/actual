@@ -6,6 +6,7 @@
 // also store `mc_amount`, the amount in the account's own currency expressed
 // in that currency's minor units (e.g. yen for JPY, fils for KWD).
 import { getDecimalPlaces } from './currencies';
+import { isPreviewId } from './transactions';
 
 type AccountCurrencyFields = { mc_currency?: string | null };
 
@@ -284,7 +285,22 @@ export function hundredthsToMinorUnits(
   return roundHalfAwayFromZero(amount / 10 ** (2 - getDecimalPlaces(currency)));
 }
 
+/**
+ * [fork:mc D-018] A stored transaction's amount as rules and schedules count
+ * it: in its account's currency (`currency`, null for an account in the
+ * default currency), in hundredths.
+ */
+export function toRulesAmount(
+  transaction: { amount: number; mc_amount?: number | null },
+  currency: string | null,
+): number {
+  return currency && transaction.mc_amount != null
+    ? minorUnitsToHundredths(transaction.mc_amount, currency)
+    : transaction.amount;
+}
+
 type ViewableTransaction = {
+  id?: string;
   amount: number;
   mc_amount?: number | null;
   subtransactions?: ViewableTransaction[];
@@ -304,6 +320,11 @@ export type AccountCurrencyViewOptions = {
   currency: string;
   /** Account amount (in its minor units) for a budget amount, or null */
   estimate?: (budgetAmount: number) => number | null;
+  /**
+   * [fork:mc D-018] Budget amount for an account amount (in its minor
+   * units), or null: what a schedule preview is worth
+   */
+  estimateBudget?: (accountAmount: number) => number | null;
 };
 
 /**
@@ -319,8 +340,27 @@ export function toAccountCurrencyView<T extends ViewableTransaction>(
   if (view._mcView) {
     return view;
   }
-  const { currency, estimate = () => null } = options;
+  const { currency, estimate = () => null, estimateBudget } = options;
   const stored = transaction.mc_amount;
+  // [fork:mc D-018] A schedule preview's amount is the schedule's, in the
+  // account's currency
+  if (stored == null && transaction.id && isPreviewId(transaction.id)) {
+    return {
+      ...transaction,
+      _mcView: true,
+      _mcBudgetAmount:
+        estimateBudget?.(
+          hundredthsToMinorUnits(transaction.amount, currency),
+        ) ?? 0,
+      ...(transaction.subtransactions
+        ? {
+            subtransactions: transaction.subtransactions.map(sub =>
+              toAccountCurrencyView(sub, options),
+            ),
+          }
+        : {}),
+    };
+  }
   const estimated = stored == null ? estimate(transaction.amount) : null;
   const estimatedView =
     estimated == null ? null : minorUnitsToHundredths(estimated, currency);

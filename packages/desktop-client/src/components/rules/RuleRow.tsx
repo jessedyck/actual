@@ -10,6 +10,11 @@ import { theme } from '@actual-app/components/theme';
 import { View } from '@actual-app/components/view';
 import type { RuleEntity } from '@actual-app/core/types/models';
 
+// [fork:mc D-018]
+import {
+  getRuleAccount,
+  McAccountCurrencyFormat,
+} from '#components/multi-currency/McAccountCurrencyFormat';
 import { Cell, Field, Row, SelectCell } from '#components/table';
 import { useContextMenu } from '#hooks/useContextMenu';
 import { useSelectedDispatch } from '#hooks/useSelected';
@@ -31,7 +36,8 @@ type RuleRowProps = {
   onDeleteRule?: (rule: RuleEntity) => void;
 };
 
-export const RuleRow = memo(
+// [fork:mc D-018] Wrapped below
+const UpstreamRuleRow = memo(
   ({
     rule,
     hovered,
@@ -203,4 +209,13 @@ export const RuleRow = memo(
   },
 );
 
-RuleRow.displayName = 'RuleRow';
+UpstreamRuleRow.displayName = 'RuleRow';
+
+// [fork:mc D-018] Amounts in the currency of the account the rule names
+export const RuleRow = memo((props: RuleRowProps) => (
+  <McAccountCurrencyFormat accountId={getRuleAccount(props.rule.conditions)}>
+    <UpstreamRuleRow {...props} />
+  </McAccountCurrencyFormat>
+));
+
+RuleRow.displayName = 'McRuleRow';

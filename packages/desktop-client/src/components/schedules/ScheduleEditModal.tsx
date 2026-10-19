@@ -6,6 +6,8 @@ import { Button } from '@actual-app/components/button';
 import { SpaceBetween } from '@actual-app/components/space-between';
 import { send, sendCatch } from '@actual-app/core/platform/client/connection';
 import * as monthUtils from '@actual-app/core/shared/months';
+// [fork:mc D-018]
+import { toRulesAmount } from '@actual-app/core/shared/multi-currency';
 import { q } from '@actual-app/core/shared/query';
 import type {
   RecurConfig,
@@ -13,6 +15,8 @@ import type {
 } from '@actual-app/core/types/models';
 
 import { Modal, ModalCloseButton, ModalHeader } from '#components/common/Modal';
+// [fork:mc D-018]
+import { useAccountCurrencyOf } from '#hooks/useMultiCurrency';
 import { usePayeesById } from '#hooks/usePayees';
 import { useScheduleEdit } from '#hooks/useScheduleEdit';
 import { useSelected } from '#hooks/useSelected';
@@ -36,6 +40,8 @@ export function ScheduleEditModal({ id, transaction }: ScheduleEditModalProps) {
   const fromTrans = transaction != null;
   const { data: payees } = usePayeesById();
   const globalDispatch = useDispatch();
+  // [fork:mc D-018]
+  const mcCurrency = useAccountCurrencyOf()(transaction?.account);
 
   // Create initial schedule if adding from transaction
   const initialSchedule = useMemo(() => {
@@ -57,7 +63,8 @@ export function ScheduleEditModal({ id, transaction }: ScheduleEditModalProps) {
     const transFields = fromTrans
       ? ({
           _account: transaction.account,
-          _amount: transaction.amount,
+          // [fork:mc D-018] In the account's currency
+          _amount: toRulesAmount(transaction, mcCurrency),
           _amountOp: 'is',
           name: transaction.payee ? payees[transaction.payee].name : '',
           _payee: transaction.payee ? transaction.payee : '',
@@ -77,7 +84,7 @@ export function ScheduleEditModal({ id, transaction }: ScheduleEditModalProps) {
       _actions: [],
       ...transFields,
     } satisfies Partial<ScheduleEntity>;
-  }, [adding, fromTrans, payees, transaction]);
+  }, [adding, fromTrans, payees, transaction, mcCurrency]);
 
   const { state, dispatch, loadSchedule } = useScheduleEdit({
     scheduleId: id,

@@ -11,6 +11,11 @@ import type { RuleEntity } from '@actual-app/core/types/models';
 import type { WithRequired } from '@actual-app/core/types/util';
 
 import { ActionableGridListItem } from '#components/mobile/ActionableGridListItem';
+// [fork:mc D-018]
+import {
+  getRuleAccount,
+  McAccountCurrencyFormat,
+} from '#components/multi-currency/McAccountCurrencyFormat';
 import { ActionExpression } from '#components/rules/ActionExpression';
 import { ConditionExpression } from '#components/rules/ConditionExpression';
 import { groupActionsBySplitIndex } from '#util/rule';
@@ -26,6 +31,9 @@ export function RulesListItem({
   ...props
 }: RulesListItemProps) {
   const { t } = useTranslation();
+
+  // [fork:mc D-018] Amounts in the currency of the account the rule names
+  const mcAccount = getRuleAccount(rule.conditions);
 
   // Group actions by splitIndex to handle split transactions
   const actionSplits = groupActionsBySplitIndex(rule.actions);
@@ -122,13 +130,15 @@ export function RulesListItem({
 
             {rule.conditions.map((condition, index) => (
               <View key={index} style={{ marginRight: 4, marginBottom: 2 }}>
-                <ConditionExpression
-                  field={condition.field}
-                  op={condition.op}
-                  value={condition.value}
-                  options={condition.options}
-                  inline
-                />
+                <McAccountCurrencyFormat accountId={mcAccount}>
+                  <ConditionExpression
+                    field={condition.field}
+                    op={condition.op}
+                    value={condition.value}
+                    options={condition.options}
+                    inline
+                  />
+                </McAccountCurrencyFormat>
               </View>
             ))}
           </SpaceBetween>
@@ -185,7 +195,9 @@ export function RulesListItem({
                           maxWidth: '100%',
                         }}
                       >
-                        <ActionExpression {...action} />
+                        <McAccountCurrencyFormat accountId={mcAccount}>
+                          <ActionExpression {...action} />
+                        </McAccountCurrencyFormat>
                       </View>
                     ))}
                   </View>
@@ -195,7 +207,9 @@ export function RulesListItem({
                     key={index}
                     style={{ marginBottom: 2, maxWidth: '100%' }}
                   >
-                    <ActionExpression {...action} />
+                    <McAccountCurrencyFormat accountId={mcAccount}>
+                      <ActionExpression {...action} />
+                    </McAccountCurrencyFormat>
                   </View>
                 ))}
           </View>

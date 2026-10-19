@@ -397,6 +397,40 @@ describe('changing the default currency', () => {
     expect((await getRule('workaround'))?.tombstone).toBe(1);
   });
 
+  // [fork:mc D-018]
+  it("converts a rule's amounts into its account's new currency", async () => {
+    await setupBudget();
+    await setManualRate({
+      date: '2016-10-01',
+      base: 'CAD',
+      quote: 'JPY',
+      rate: 80,
+    });
+    await rate('2016-10-01', 'JPY', 0.0085);
+    await insertRule({
+      id: 'mortgage',
+      stage: null,
+      conditionsOp: 'and',
+      conditions: [
+        { op: 'is', field: 'account', value: 'chq' },
+        { op: 'is', field: 'amount', value: -150000 },
+      ],
+      actions: [{ op: 'set', field: 'category', value: 'rent' }],
+    });
+
+    const result = await setDefaultCurrency({
+      toCurrency: 'EUR',
+      accountCurrencies: { chq: 'JPY', eur: 'EUR' },
+      keepBudgets: true,
+    });
+    // 1.500,00 CAD is 120.000 JPY at today's rate; rule amounts count
+    // hundredths whatever the currency
+    expect((await getRule('mortgage'))?.conditions[1].value).toBe(-12000000);
+    // Rules for every account keep their amounts
+    expect((await getRule('rent'))?.conditions[0].value).toBe(-150000);
+    expect(result).toMatchObject({ rules: 1 });
+  });
+
   it('refuses without a rate or a valid currency', async () => {
     await setupBudget();
     await expect(

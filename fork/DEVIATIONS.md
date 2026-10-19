@@ -77,6 +77,7 @@ so, reconciling needs a data migration, described under D-002.
 | D-015 | Reports in a display currency                                 | `loot-core/src/types/prefs.ts` (pref key), `desktop-client/src/hooks/useFormat.ts`, `desktop-client/src/components/reports/spreadsheets/{net-worth-spreadsheet,custom-spreadsheet,grouped-spreadsheet,fetchSpreadsheetQueryData,spending-spreadsheet}.ts`, `desktop-client/src/components/reports/spreadsheets/cash-flow-spreadsheet.tsx`, `desktop-client/src/components/reports/reports/{NetWorth,NetWorthCard,CashFlow,CashFlowCard,CustomReport,GetCardData,Spending,SpendingCard,Summary,SummaryCard,CalendarCard}.tsx`, `desktop-client/src/components/reports/spreadsheets/{summary,calendar}-spreadsheet.ts`, `desktop-client/src/components/reports/Overview.tsx` | Done for net worth, cash flow, custom, spending, summary and calendar cards |
 | D-016 | Changing the budget currency (replaced by D-017)              | (see D-017)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Retired                                                                     |
 | D-017 | A currency on each budget; changing the default currency      | `loot-core/src/server/budget/*`, budget page and budget menus (desktop and mobile), `settings/Currency.tsx`, `global-events.ts`, modal registry, schema, 4 snapshot files (full list under D-017)                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Done                                                                        |
+| D-018 | Rules and schedules in the account's currency                 | `loot-core/src/server/transactions/transaction-rules.ts`, `loot-core/src/server/schedules/{app,find-schedules}.ts`, `loot-core/src/server/forecast/forecast-schedules.ts`, `desktop-client/src/components/schedules/{SchedulesTable,ScheduleEditForm,ScheduleEditModal}.tsx`, `desktop-client/src/components/rules/{RuleRow,RuleEditor}.tsx`, `desktop-client/src/components/mobile/{schedules/SchedulesListItem,rules/RulesListItem}.tsx`, `desktop-client/src/components/transactions/SimpleTransactionsTable.tsx`                                                                                                                                                       | Done                                                                        |
 
 ### D-001: `multiCurrency` flag
 
@@ -247,10 +248,11 @@ in the account's currency, in hundredths like every amount the API takes:
 - `server/accounts/sync.ts` (`matchTransactions`): right after the
   transactions are normalized, the fork's `readImportedAmounts`
   (`server/multi-currency/imports.ts`) moves each amount to `mc_amount` and
-  converts `amount` at the transaction's date, so rules and duplicate
-  matching see the budget value the transaction will have. A transaction
-  that already carries `mc_amount` keeps both amounts. Split children only
-  get `mc_amount`; D-006 derives and rounds their budget amounts.
+  converts `amount` at the transaction's date, so the budget value is known
+  before duplicate matching. Rules see the account amount (D-018). A
+  transaction that already carries `mc_amount` keeps both amounts. Split
+  children only get `mc_amount`; D-006 derives and rounds their budget
+  amounts.
 - Duplicate matching compares account amounts, falling back to `amount` for
   rows whose conversion is pending: both fuzzy-match queries also select
   `mc_amount` and take their amount condition from `getImportAmountMatch`
@@ -261,9 +263,9 @@ in the account's currency, in hundredths like every amount the API takes:
 - `ImportTransactionsModal.tsx`: a note under _Amount options_ says which
   currency the file's amounts are read in (`McImportCurrencyNote`).
 
-The API's `addTransactions` and transactions posted by schedules still take
-budget amounts, as everywhere else in the API (D-006 derives the account
-amount).
+The API's `addTransactions` still takes budget amounts, as everywhere else
+in the API (D-006 derives the account amount). Transactions posted by
+schedules take the schedule's amount in the account's currency (D-018).
 
 _Reconcile:_ remove the fork components, `mcReconciliation.ts` and the
 branches in `Header.tsx`, `Account.tsx`, `AccountReconcileModal.tsx`,
@@ -337,8 +339,10 @@ amounts at the register's boundary instead of changing that logic:
   decimals (JPY, KRW, IRR) the view scales amounts on the way in and out
   (`minorUnitsToHundredths` / `hundredthsToMinorUnits`); for two-decimal
   currencies nothing changes.
-- Rows with no stored account amount (schedule previews, pending
-  conversions) show an estimate at today's rate, never stored.
+- Rows with no stored account amount (pending conversions) show an estimate
+  at today's rate, never stored. A schedule preview shows the schedule's
+  amount, already in the account's currency (D-018); its budget amount is
+  the estimate.
 - `Account.tsx`: running and filtered balances sum `mc_amount` for these
   accounts (new prop `isAccountCurrencyView`). `AllTransactions` puts the
   running balances and scheduled previews into the view before adding them
@@ -370,13 +374,12 @@ Mobile:
   amounts, and the server converts as in D-006. The currency is named under
   the amount (`McAmountCurrencyHint`).
 - Rules on a transaction typed in a foreign-currency account (desktop and
-  mobile) run through `transactions/mcRules.ts`: they see the account amount
-  as `mc_amount` and a budget amount of 0, and can't change the amount
-  being typed.
+  mobile) run through `transactions/mcRules.ts`: they get the account amount
+  as `mc_amount` and a budget amount of 0. Amount conditions compare the
+  typed amount (D-018), but rules can't change it.
 
-Not yet: rules and schedules compare budget amounts, so amount conditions
-don't match transactions being typed in a foreign-currency account, and
-split rules don't apply to them.
+Not yet: while a transaction is typed in a foreign-currency account, rules
+can't change its amount or split it (imported transactions can be).
 
 _Reconcile:_ remove the swap from `TransactionList.tsx`, the prop, both
 sums and the `AllTransactions` conversion in `Account.tsx`, and the tooltip,
@@ -583,26 +586,90 @@ ExpenseCategoryListItem,IncomeCategoryListItem}.tsx`; the budget menus
     next month (`zero_budget_months.buffered`) converts in kept months.
   - Rules written for the docs workaround (a templated `set notes` with
     "FX rate:" plus a templated `set amount`) are deleted when none of their
-    accounts stays in the old currency; rules whose accounts all change
-    currency convert their amounts at today's rate. The new currency's
+    accounts stays in the old currency. Rule and schedule amounts are in
+    their account's currency (D-018): those whose accounts all get another
+    currency convert into it at today's rate; the others keep their
+    numbers. The new currency's
     number format and symbol position are set, as upstream's picker does;
     `mcReportCurrency` is cleared when it equals the new default.
   - Refusals (no rate, invalid currency) are `APIError`s shown in the dialog
     (`util/mcErrorMessage.ts`). `global-events.ts` reloads preferences when
     an undo touches them; upstream leaves them stale in Redux.
 
-Not yet: rules and schedules still compare and post default-currency
-amounts, so after changing the default currency, the amounts of a rule or
-schedule for an account kept in the old currency are read in the new one
-(next step: amounts in rules and schedules in the account's currency);
-budget templates and goals written in notes don't know about currencies; reports that show budgeted amounts (custom reports, spending,
-budget analysis) read them as default-currency amounts; on narrow phones a
-budget amount with a long symbol (CA$) can be cut off by a pixel, an
-upstream rounding issue in the cells' self-sizing text.
+Not yet: budget templates and goals written in notes don't know about
+currencies (a `#template schedule` takes the schedule's amount, in its
+account's currency, as is); reports that show budgeted amounts (custom
+reports, spending, budget analysis) read them as default-currency amounts;
+on narrow phones a budget amount with a long symbol (CA$) can be cut off by
+a pixel, an upstream rounding issue in the cells' self-sizing text.
 
 _Reconcile:_ keep while upstream has one currency per budget file. If
 upstream adds per-budget currencies, copy `mc_currency` into its field and
 drop the factor cells.
+
+### D-018: Rules and schedules in the account's currency
+
+The amounts of rules and schedules are in the currency of the account a
+transaction is in: a mortgage of 1.900,00 CA$ paid from a CAD account stays
+1.900,00 CA$, whatever the default currency is and whatever the month's
+rate. Like every amount a rule holds, they count hundredths. For an account
+in the default currency nothing changes. Server helpers live in the fork's
+`server/multi-currency/rules.ts`.
+
+- **Running rules** (`runRules` in `transaction-rules.ts`): for a
+  transaction in a foreign-currency account that has an account amount,
+  rules see that amount as `amount` (`toRulesView`). Afterwards
+  (`fromRulesView`) an unchanged amount keeps both stored amounts; a changed
+  one becomes the new `mc_amount`, with its default-currency value at the
+  month's rate (0 while that rate isn't stored; saving fills it in). Split
+  rules divide the account amount, and each part gets both amounts, rounded
+  to add up to the parent. This covers imports, bank sync and the rules
+  run on a transaction being typed (D-013).
+- **Applying actions** (`applyActions`, the rule editor's _Apply actions_):
+  actions set the account amount and D-006 derives the default-currency
+  value. Split actions applied this way still divide the default-currency
+  amount.
+- **Filters** (`conditionsToAQL`, used to match schedules, by the rule
+  editor's list of transactions, account filters and reports): an amount
+  condition compares `amount` for accounts in the default currency and
+  `mc_amount` for the others (`toAccountCurrencyAmountFilter`).
+- **Schedules**: a posted transaction gets the schedule's amount as
+  `mc_amount` (`postTransactionForSchedule` in `schedules/app.ts`; D-006
+  derives `amount`). Finding schedules (`find-schedules.ts`) reads account
+  amounts. Register previews show the schedule's amount and estimate its
+  budget value at today's rate (`estimateBudget` in the shared
+  `toAccountCurrencyView`, `useAccountCurrencyRegister`). A schedule made
+  from a transaction starts from its account amount (`ScheduleEditModal.tsx`,
+  shared `toRulesAmount`). The balance forecast
+  (`forecast/forecast-schedules.ts`) adds each occurrence's value in the
+  default currency at its month's rate.
+- **Display**: the schedule list (`SchedulesTable.tsx`, amount column 100 →
+  120 px; mobile `SchedulesListItem.tsx`), the schedule editor (amount
+  labelled with the currency, `ScheduleEditForm.tsx`) and rules that name
+  one account (`RuleRow.tsx`, `RuleEditor.tsx`, mobile `RulesListItem.tsx`)
+  format amounts in the account's currency (fork `McAccountCurrencyFormat`,
+  `getRuleAccount`). Lists of a rule's or a schedule's transactions
+  (`SimpleTransactionsTable.tsx`) show each in its account's currency
+  (`McTransactionAmount`), in an amount column 35 px wider while any account
+  has its own currency.
+- **Changing the default currency** (D-017): rules whose accounts all get
+  another currency convert their amounts into it at today's rate; the
+  others keep their numbers.
+
+Not yet:
+
+- Rules and schedules saved before this change for an account that already
+  had its own currency held default-currency amounts; they are now read in
+  the account's currency, so check them once.
+- A rule for several accounts, or for all of them, shows its amounts in the
+  default currency, though it compares each transaction in its account's
+  currency.
+- For currencies without decimals (JPY), amount filters compare hundredths
+  with whole yen and miss; running rules is not affected.
+
+_Reconcile:_ keep while upstream rules compare default-currency amounts.
+If upstream makes `amount` the account currency, drop the views and the
+filter; the schedule changes then become upstream's own behaviour.
 
 ### D-009: Docker image
 
@@ -642,6 +709,8 @@ git log --oneline -i --grep=currenc master..upstream/master
 git diff --stat master@{1} master -- packages/loot-core/migrations
 
 git switch multicurrency && git merge master
+# Fork wrappers re-indent a few upstream JSX blocks; if those conflict,
+#   git merge --abort && git merge -Xignore-space-change master
 # Snapshot conflicts: take upstream's file, then regenerate
 #   git checkout --theirs <file>.snap
 #   (cd packages/loot-core && ENV=node npx vitest --run -u)

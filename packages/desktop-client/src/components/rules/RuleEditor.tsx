@@ -45,6 +45,11 @@ import { v4 as uuidv4 } from 'uuid';
 
 import { TagMultiAutocomplete } from '#components/autocomplete/TagMultiAutocomplete';
 import { FinancialText } from '#components/FinancialText';
+// [fork:mc D-018]
+import {
+  getRuleAccount,
+  McAccountCurrencyFormat,
+} from '#components/multi-currency/McAccountCurrencyFormat';
 import { StatusBadge } from '#components/schedules/StatusBadge';
 import { SimpleTransactionsTable } from '#components/transactions/SimpleTransactionsTable';
 import { BetweenAmountInput } from '#components/util/AmountInput';
@@ -1398,13 +1403,16 @@ export function RuleEditor({
               </Trans>
             </Text>
 
-            <ConditionsList
-              conditionsOp={conditionsOp}
-              conditions={conditions}
-              editorStyle={styles.editorPill}
-              isSchedule={isSchedule}
-              onChangeConditions={conds => setConditions(conds)}
-            />
+            {/* [fork:mc D-018] Amounts in the rule's account's currency */}
+            <McAccountCurrencyFormat accountId={getRuleAccount(conditions)}>
+              <ConditionsList
+                conditionsOp={conditionsOp}
+                conditions={conditions}
+                editorStyle={styles.editorPill}
+                isSchedule={isSchedule}
+                onChangeConditions={conds => setConditions(conds)}
+              />
+            </McAccountCurrencyFormat>
           </View>
 
           <Text style={{ marginBottom: 15 }}>
@@ -1482,17 +1490,25 @@ export function RuleEditor({
                   >
                     {actions.map((action, actionIndex) => (
                       <View key={actionIndex} style={{ width: '100%' }}>
-                        <ActionEditor
-                          action={action}
-                          editorStyle={styles.editorPill}
-                          onChange={(name, value, extraOptions) =>
-                            onChangeAction(action, name, value, extraOptions)
-                          }
-                          onDelete={() => onRemoveAction(action)}
-                          onAdd={() =>
-                            addActionToSplitAfterIndex(splitIndex, actionIndex)
-                          }
-                        />
+                        {/* [fork:mc D-018] */}
+                        <McAccountCurrencyFormat
+                          accountId={getRuleAccount(conditions)}
+                        >
+                          <ActionEditor
+                            action={action}
+                            editorStyle={styles.editorPill}
+                            onChange={(name, value, extraOptions) =>
+                              onChangeAction(action, name, value, extraOptions)
+                            }
+                            onDelete={() => onRemoveAction(action)}
+                            onAdd={() =>
+                              addActionToSplitAfterIndex(
+                                splitIndex,
+                                actionIndex,
+                              )
+                            }
+                          />
+                        </McAccountCurrencyFormat>
                       </View>
                     ))}
                   </SpaceBetween>

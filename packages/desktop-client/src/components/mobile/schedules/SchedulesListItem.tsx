@@ -9,6 +9,8 @@ import { Text } from '@actual-app/components/text';
 import { theme } from '@actual-app/components/theme';
 import { View } from '@actual-app/components/view';
 import { format as monthUtilFormat } from '@actual-app/core/shared/months';
+// [fork:mc D-018]
+import { hundredthsToMinorUnits } from '@actual-app/core/shared/multi-currency';
 import type { ScheduleStatusType } from '@actual-app/core/shared/schedules';
 import { getScheduledAmount } from '@actual-app/core/shared/schedules';
 import type { ScheduleEntity } from '@actual-app/core/types/models';
@@ -19,6 +21,9 @@ import { StatusBadge } from '#components/schedules/StatusBadge';
 import { DisplayId } from '#components/util/DisplayId';
 import { useDateFormat } from '#hooks/useDateFormat';
 import { useFormat } from '#hooks/useFormat';
+// [fork:mc D-018]
+import { useAccountCurrencyOf } from '#hooks/useMultiCurrency';
+import { useMultiCurrencyFormat } from '#hooks/useMultiCurrencyFormat';
 
 type SchedulesListItemProps = {
   onDelete: () => void;
@@ -36,13 +41,21 @@ export function SchedulesListItem({
   const format = useFormat();
   const dateFormat = useDateFormat() || 'MM/dd/yyyy';
 
+  // [fork:mc D-018] A schedule's amount is in its account's currency
+  const mcCurrency = useAccountCurrencyOf()(schedule._account);
+  const mcFormat = useMultiCurrencyFormat();
+  const formatAmount = (value: number) =>
+    mcCurrency
+      ? mcFormat.format(hundredthsToMinorUnits(value, mcCurrency), mcCurrency)
+      : format(value, 'financial');
+
   const amount = getScheduledAmount(schedule._amount);
   const amountStr =
     (schedule._amountOp === 'isapprox' || schedule._amountOp === 'isbetween'
       ? '~'
       : '') +
     (amount > 0 ? '+' : '') +
-    format(Math.abs(amount || 0), 'financial');
+    formatAmount(Math.abs(amount || 0));
 
   return (
     <ActionableGridListItem

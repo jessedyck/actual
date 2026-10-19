@@ -17,6 +17,8 @@ import type { ScheduleStatuses } from '@actual-app/core/shared/schedules';
 import type { ScheduleEntity } from '@actual-app/core/types/models';
 
 import { FinancialText } from '#components/FinancialText';
+// [fork:mc D-018]
+import { McAccountCurrencyFormat } from '#components/multi-currency/McAccountCurrencyFormat';
 import { PrivacyFilter } from '#components/PrivacyFilter';
 import { Cell, Field, Row, Table, TableHeader } from '#components/table';
 import { DisplayId } from '#components/util/DisplayId';
@@ -92,7 +94,8 @@ export function ScheduleAmountCell({
   }
   return (
     <Cell
-      width={100}
+      // [fork:mc D-018] Room for longer currency symbols (CA$)
+      width={120}
       plain
       style={{
         textAlign: 'right',
@@ -246,7 +249,10 @@ function ScheduleRow({
       <Field width={120} name="status" style={{ alignItems: 'flex-start' }}>
         <StatusBadge status={statuses.get(schedule.id)} />
       </Field>
-      <ScheduleAmountCell amount={schedule._amount} op={schedule._amountOp} />
+      {/* [fork:mc D-018] In the account's currency */}
+      <McAccountCurrencyFormat accountId={schedule._account}>
+        <ScheduleAmountCell amount={schedule._amount} op={schedule._amountOp} />
+      </McAccountCurrencyFormat>
       {!minimal && (
         <Field width={80} style={{ textAlign: 'center' }}>
           {schedule._date &&
@@ -418,7 +424,8 @@ export function SchedulesTable({
         <Field width={120}>
           <Trans>Status</Trans>
         </Field>
-        <Field width={100} style={{ textAlign: 'right' }}>
+        {/* [fork:mc D-018] Room for longer currency symbols (CA$) */}
+        <Field width={120} style={{ textAlign: 'right' }}>
           <Trans>Amount</Trans>
         </Field>
         {!minimal && (

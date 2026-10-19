@@ -13,6 +13,11 @@ import {
 } from 'date-fns';
 
 import { FinancialText } from '#components/FinancialText';
+// [fork:mc D-018]
+import {
+  McTransactionAmount,
+  useMcAmountColumnWidth,
+} from '#components/multi-currency/McAccountCurrencyFormat';
 import { Cell, Field, Row, SelectCell, Table } from '#components/table';
 import { DisplayId } from '#components/util/DisplayId';
 import { useAccount } from '#hooks/useAccount';
@@ -57,6 +62,8 @@ function TransactionRow({
 
   const { data: category } = useCategory(transaction.category);
   const account = useAccount(transaction.account);
+  // [fork:mc D-018]
+  const amountWidth = useMcAmountColumnWidth(75);
 
   const dispatchSelected = useSelectedDispatch();
 
@@ -150,10 +157,14 @@ function TransactionRow({
               </Field>
             );
           case 'amount':
+            // [fork:mc D-018] In the account's currency, like the rule or
+            // schedule they match
             return (
-              <Field key={i} width={75} style={{ textAlign: 'right' }}>
+              <Field key={i} width={amountWidth} style={{ textAlign: 'right' }}>
                 <FinancialText>
-                  {format(transaction.amount, 'financial')}
+                  <McTransactionAmount transaction={transaction}>
+                    {format(transaction.amount, 'financial')}
+                  </McTransactionAmount>
                 </FinancialText>
               </Field>
             );
@@ -180,6 +191,8 @@ export function SimpleTransactionsTable({
 }: SimpleTransactionsTableProps) {
   const format = useFormat();
   const dateFormat = useDateFormat() || 'MM/dd/yyyy';
+  // [fork:mc D-018]
+  const amountWidth = useMcAmountColumnWidth(75);
   const selectedItems = useSelectedItems();
   const dispatchSelected = useSelectedDispatch();
   const memoFields = useMemo(() => fields, [fields]);
@@ -263,7 +276,11 @@ export function SimpleTransactionsTable({
                 );
               case 'amount':
                 return (
-                  <Field key={i} width={75} style={{ textAlign: 'right' }}>
+                  <Field
+                    key={i}
+                    width={amountWidth}
+                    style={{ textAlign: 'right' }}
+                  >
                     <Trans>Amount</Trans>
                   </Field>
                 );

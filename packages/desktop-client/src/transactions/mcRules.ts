@@ -7,9 +7,10 @@ import type { TransactionEntity } from '@actual-app/core/types/models';
 
 /**
  * Runs rules on stored fields: the typed amount as `mc_amount` and a budget
- * amount of 0, which the server derives on save. Rules can't change the
- * amount being typed, and split rules (computed from the budget amount)
- * don't apply.
+ * amount of 0, which the server derives on save. Amount conditions compare
+ * the typed amount, since rules count amounts in the account's currency
+ * (D-018). Rules can't change the amount being typed, and split rules don't
+ * apply here.
  */
 export async function runRulesInAccountCurrency(
   transaction: TransactionEntity,

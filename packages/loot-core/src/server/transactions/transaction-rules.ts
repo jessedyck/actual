@@ -14,6 +14,13 @@ import { getMappings } from '#server/db/mappings';
 import { RuleError } from '#server/errors';
 import { ensureFormulaPreferencesLoaded } from '#server/formulas/bootstrap';
 import { requiredFields, toDateRepr } from '#server/models';
+// [fork:mc D-018] Amounts in the account's currency
+import {
+  fromRulesView,
+  getForeignCurrency,
+  toAccountCurrencyAmountFilter,
+  toRulesView,
+} from '#server/multi-currency/rules';
 import {
   Action,
   Condition,
@@ -37,6 +44,8 @@ import {
   parseDate,
   subDays,
 } from '#shared/months';
+// [fork:mc D-018]
+import { hundredthsToMinorUnits } from '#shared/multi-currency';
 import { q } from '#shared/query';
 import { getApproxNumberThreshold, sortNumbers } from '#shared/rules';
 import { extractTagsForFilter, makeTagAqlRegex } from '#shared/tags';
@@ -335,6 +344,15 @@ export async function runRules(
     accountsMap = accounts;
   }
 
+  // [fork:mc D-018] In an account with another currency than the default
+  // one, rules see and set the account's own amount
+  const mcOriginal = trans;
+  const mcCurrency = getForeignCurrency(trans.account, accountsMap);
+  const mcView = toRulesView(trans, mcCurrency);
+  if (mcView) {
+    trans = mcView;
+  }
+
   const rules = rankRules(
     fastSetMerge(
       firstcharIndexer.getApplicableRules(trans),
@@ -453,6 +471,10 @@ export async function runRules(
     if (result[field] === null) {
       delete result[field];
     }
+  }
+  // [fork:mc D-018]
+  if (mcView && mcCurrency) {
+    return fromRulesView(result, mcOriginal, mcView, mcCurrency);
   }
   return result;
 }
@@ -748,7 +770,10 @@ export function conditionsToAQL(
     }
   };
 
-  const filters = conditions.map(mapConditionToActualQL);
+  // [fork:mc D-018] Amounts compare with each account's own amount
+  const filters = conditions.map(cond =>
+    toAccountCurrencyAmountFilter(cond.field, mapConditionToActualQL(cond)),
+  );
   return { filters, errors };
 }
 
@@ -799,8 +824,29 @@ export async function applyActions(
   const accounts: db.DbAccount[] = await db.getAccounts();
   const accountsMap = new Map(accounts.map(account => [account.id, account]));
   const includeBalance = actionsReferenceBalance(parsedActions);
+
+  // [fork:mc D-018] Actions set the account's own amount, unless they split
+  // the transaction
+  const mcOriginals = new Map<string, TransactionEntity>();
+  const mcViews = new Map<string, { amount: number; currency: string }>();
+  const isSplitting = parsedActions.some(
+    action => action.op === 'set-split-amount',
+  );
+  const transactionsToRun = isSplitting
+    ? transactions
+    : transactions.map(transaction => {
+        const currency = getForeignCurrency(transaction.account, accountsMap);
+        const view = toRulesView(transaction, currency);
+        if (!view || !currency) {
+          return transaction;
+        }
+        mcOriginals.set(transaction.id, transaction);
+        mcViews.set(transaction.id, { amount: view.amount, currency });
+        return view;
+      });
+
   const transactionsForRules = await Promise.all(
-    transactions.map(transaction =>
+    transactionsToRun.map(transaction =>
       prepareTransactionForRules(transaction, accountsMap, { includeBalance }),
     ),
   );
@@ -821,7 +867,21 @@ export async function applyActions(
 
   const finalized: TransactionEntity[] = [];
   for (const trans of updated) {
-    finalized.push(await finalizeTransactionForRules(trans));
+    const final = await finalizeTransactionForRules(trans);
+    // [fork:mc D-018] A changed amount is the account's; the server derives
+    // the default-currency value again (D-006)
+    const original = mcOriginals.get(final.id);
+    const view = mcViews.get(final.id);
+    if (original && view) {
+      if (final.amount === view.amount) {
+        final.amount = original.amount;
+        final.mc_amount = original.mc_amount;
+      } else {
+        final.mc_amount = hundredthsToMinorUnits(final.amount, view.currency);
+        final.amount = original.amount;
+      }
+    }
+    finalized.push(final);
   }
 
   return batchUpdateTransactions({ updated: finalized });
