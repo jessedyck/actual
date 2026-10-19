@@ -46,6 +46,8 @@ import * as cloudStorage from './cloud-storage';
 import type { RemoteFile } from './cloud-storage';
 import * as db from './db';
 import { APIError, withErrorCode } from './errors';
+// [fork:mc D-017]
+import { getReportCell } from './multi-currency/month-rates';
 import { runMutator } from './mutators';
 import * as prefs from './prefs';
 import { getScheduleDates } from './schedules/occurrences';
@@ -442,6 +444,8 @@ handlers['api/budget-month'] = async function ({ month }) {
 
   // This is duplicated from main.js because the return format is
   // different (for now)
+  // [fork:mc D-017] Category figures are in the default currency, like the
+  // totals, when budgets can have a currency of their own (`getReportCell`)
   return {
     month,
     incomeAvailable: value('available-funds') as number,
@@ -466,9 +470,9 @@ handlers['api/budget-month'] = async function ({ month }) {
 
             categories: group.categories.map(cat => ({
               ...categoryModel.toExternal(cat),
-              budgeted: value(`budget-${cat.id}`),
-              received: value(`sum-amount-${cat.id}`),
-              balance: value(`leftover-${cat.id}`),
+              budgeted: value(getReportCell(sheetName, 'budget', cat.id)),
+              received: value(getReportCell(sheetName, 'sum-amount', cat.id)),
+              balance: value(getReportCell(sheetName, 'leftover', cat.id)),
               carryover: value(`carryover-${cat.id}`),
             })),
           };
@@ -480,7 +484,7 @@ handlers['api/budget-month'] = async function ({ month }) {
 
           categories: group.categories.map(cat => ({
             ...categoryModel.toExternal(cat),
-            received: value(`sum-amount-${cat.id}`),
+            received: value(getReportCell(sheetName, 'sum-amount', cat.id)),
           })),
         };
       }
@@ -493,9 +497,9 @@ handlers['api/budget-month'] = async function ({ month }) {
 
         categories: group.categories.map(cat => ({
           ...categoryModel.toExternal(cat),
-          budgeted: value(`budget-${cat.id}`),
-          spent: value(`sum-amount-${cat.id}`),
-          balance: value(`leftover-${cat.id}`),
+          budgeted: value(getReportCell(sheetName, 'budget', cat.id)),
+          spent: value(getReportCell(sheetName, 'sum-amount', cat.id)),
+          balance: value(getReportCell(sheetName, 'leftover', cat.id)),
           carryover: value(`carryover-${cat.id}`),
         })),
       };

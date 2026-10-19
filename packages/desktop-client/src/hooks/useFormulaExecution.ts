@@ -25,6 +25,9 @@ import {
   asMonthSlidingTimeFrame,
   calculateTimeRange,
 } from '#components/reports/reportRanges';
+// [fork:mc D-017]
+import { findBudgetFigureCell } from '#reports/mcBudgetCells';
+import type { McBudgetFigure } from '#reports/mcBudgetCells';
 import { bootstrapHyperFormula } from '#util/bootstrapHyperFormula';
 
 import { useGlobalPref } from './useGlobalPref';
@@ -563,7 +566,14 @@ function getMonthDataValue(
   catId: string,
 ): string | number | boolean {
   const fieldName = pattern.replace('{catId}', catId);
-  const cell = monthData.find(c => c.name.endsWith(fieldName));
+  // [fork:mc D-017] Budget figures in the default currency, so budgets in
+  // other currencies add up
+  const figure = (
+    ['budget', 'sum-amount', 'leftover'] as McBudgetFigure[]
+  ).find(kind => pattern === `${kind}-{catId}`);
+  const cell = figure
+    ? findBudgetFigureCell(monthData, figure, catId)
+    : monthData.find(c => c.name.endsWith(fieldName));
   return cell?.value ?? 0;
 }
 

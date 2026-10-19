@@ -298,8 +298,8 @@ describe('changing the default currency', () => {
     );
     expect(preview.fromCurrency).toBe('CAD');
     expect(preview.todayRate).toBe(0.66);
-    // From three months before the first transaction to this month
-    expect(preview.keepFrom).toBe('2016-07');
+    // From the month of the first transaction to this month
+    expect(preview.keepFrom).toBe('2016-10');
     expect(preview.keepUntil).toBe('2017-01');
     expect(byId.chq).toMatchObject({
       currency: null,
@@ -373,12 +373,12 @@ describe('changing the default currency', () => {
     ]);
     // Every budget up to this month gets CAD stored on it, also where a
     // category had none that month; later ones follow the default
-    expect(await getBudgetCurrency(201607, 'food')).toBe('CAD');
+    expect(await getBudgetCurrency(201609, 'food')).toBeUndefined();
     expect(await getBudgetCurrency(201610, 'food')).toBe('CAD');
     expect(await getBudgetCurrency(201611, 'rent')).toBe('CAD');
     expect(await getBudgetCurrency(201701, 'rent')).toBe('CAD');
     expect(await getBudgetCurrency(201702, 'food')).toBeNull();
-    expect(result.budgets).toBe(14);
+    expect(result.budgets).toBe(8);
     // Money held for next month is in the default currency: November's
     // average rate
     expect(await getHeld('2016-11')).toBe(13600);
@@ -461,7 +461,7 @@ describe('changing the default currency', () => {
     });
     await db.update('zero_budgets', { id: '201610-food', mc_currency: 'GBP' });
 
-    expect(await migrateCurrencyPeriods()).toEqual({ budgets: 9 });
+    expect(await migrateCurrencyPeriods()).toEqual({ budgets: 3 });
     expect(await getBudgetCurrency(201610, 'rent')).toBe('CAD');
     expect(await getBudgetCurrency(201611, 'food')).toBe('CAD');
     // A budget with a currency of its own keeps it; later ones have none

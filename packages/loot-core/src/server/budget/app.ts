@@ -3,6 +3,8 @@ import { aqlQuery } from '#server/aql';
 import * as db from '#server/db';
 import { APIError } from '#server/errors';
 import { categoryGroupModel, categoryModel } from '#server/models';
+// [fork:mc D-017]
+import { getConvertedMonthCells } from '#server/multi-currency/month-rates';
 import { mutator } from '#server/mutators';
 import * as sheet from '#server/sheet';
 import { resolveName } from '#server/spreadsheet/util';
@@ -257,6 +259,15 @@ async function envelopeBudgetMonth({ month }: { month: string }) {
     }
   }
 
+  // [fork:mc D-017] Each category's figures in the default currency too,
+  // for reports
+  values = values.concat(
+    getConvertedMonthCells(
+      sheetName,
+      groups.flatMap(group => (group.categories ?? []).map(cat => cat.id)),
+    ),
+  );
+
   return values;
 }
 
@@ -302,6 +313,15 @@ async function trackingBudgetMonth({ month }: { month: string }) {
       }
     }
   }
+
+  // [fork:mc D-017] Each category's figures in the default currency too,
+  // for reports
+  values = values.concat(
+    getConvertedMonthCells(
+      sheetName,
+      groups.flatMap(group => (group.categories ?? []).map(cat => cat.id)),
+    ),
+  );
 
   return values;
 }

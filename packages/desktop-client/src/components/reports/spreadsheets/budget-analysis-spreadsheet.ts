@@ -7,6 +7,10 @@ import type {
 } from '@actual-app/core/types/models';
 
 import type { useSpreadsheet } from '#hooks/useSpreadsheet';
+// [fork:mc D-017, D-015]
+import { findBudgetFigureCell } from '#reports/mcBudgetCells';
+import { prepareFlowConversion } from '#reports/mcReportValuation';
+import type { McValuationConfig } from '#reports/mcReportValuation';
 
 import type { BudgetMonthCell } from './budgetMonthCell';
 
@@ -34,6 +38,8 @@ type createBudgetAnalysisSpreadsheetProps = {
   startDate: string;
   endDate: string;
   showHiddenCategories?: boolean;
+  // [fork:mc D-015] Amounts in the display currency
+  mcValuation?: McValuationConfig | null;
 };
 
 export function isBaseCategory(
@@ -97,15 +103,11 @@ export function summarizeMonthCategories(
 
   for (const cat of categoriesToInclude) {
     // Find the budget, spent, balance, and carryover flag for this category
-    const budgetCell = monthData.find((cell: BudgetMonthCell) =>
-      cell.name.endsWith(`budget-${cat.id}`),
-    );
-    const spentCell = monthData.find((cell: BudgetMonthCell) =>
-      cell.name.endsWith(`sum-amount-${cat.id}`),
-    );
-    const balanceCell = monthData.find((cell: BudgetMonthCell) =>
-      cell.name.endsWith(`leftover-${cat.id}`),
-    );
+    // [fork:mc D-017] Figures in the default currency, so budgets in other
+    // currencies add up
+    const budgetCell = findBudgetFigureCell(monthData, 'budget', cat.id);
+    const spentCell = findBudgetFigureCell(monthData, 'sum-amount', cat.id);
+    const balanceCell = findBudgetFigureCell(monthData, 'leftover', cat.id);
     const carryoverCell = monthData.find((cell: BudgetMonthCell) =>
       cell.name.endsWith(`carryover-${cat.id}`),
     );
@@ -177,6 +179,7 @@ export function createBudgetAnalysisSpreadsheet({
   startDate,
   endDate,
   showHiddenCategories = false,
+  mcValuation = null,
 }: createBudgetAnalysisSpreadsheetProps) {
   return async (
     spreadsheet: ReturnType<typeof useSpreadsheet>,
@@ -364,6 +367,38 @@ export function createBudgetAnalysisSpreadsheet({
       });
       // Save this month's overspending to apply in next month
       overspendingFromPrevMonth = overspendingThisMonth;
+    }
+
+    // [fork:mc D-015] In another currency each month's figures convert at
+    // that month's average rate, and the totals add them up
+    const conversion = mcValuation
+      ? await prepareFlowConversion(mcValuation, {
+          startDate: `${intervals[0]}-01`,
+          endDate: monthUtils.getMonthEnd(
+            `${intervals[intervals.length - 1]}-01`,
+          ),
+        })
+      : null;
+    if (conversion && intervals.length > 0) {
+      totalBudgeted = 0;
+      totalSpent = 0;
+      totalOverspendingAdjustment = 0;
+      for (const item of intervalData) {
+        item.budgeted = conversion.convert(item.date, item.budgeted);
+        item.spent = conversion.convert(item.date, item.spent);
+        item.balance = conversion.convert(item.date, item.balance);
+        item.overspendingAdjustment = conversion.convert(
+          item.date,
+          item.overspendingAdjustment,
+        );
+        totalBudgeted += item.budgeted;
+        totalSpent += item.spent;
+        totalOverspendingAdjustment += item.overspendingAdjustment;
+      }
+      overspendingFromPrevMonth = conversion.convert(
+        intervals[intervals.length - 1],
+        overspendingFromPrevMonth,
+      );
     }
 
     setData({

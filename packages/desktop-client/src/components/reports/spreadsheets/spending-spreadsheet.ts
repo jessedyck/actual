@@ -16,6 +16,8 @@ import { resolveSpendingAverageRange } from '#components/reports/spendingAverage
 import { fromDateRepr } from '#components/reports/util';
 import type { useSpreadsheet } from '#hooks/useSpreadsheet';
 import { aqlQuery } from '#queries/aqlQuery';
+// [fork:mc D-017]
+import { getDefaultCurrencyBudgets } from '#reports/mcBudgetCells';
 // [fork:mc D-015]
 import { prepareFlowConversion } from '#reports/mcReportValuation';
 import type { McValuationConfig } from '#reports/mcReportValuation';
@@ -247,6 +249,11 @@ export function createSpendingSpreadsheet({
           }),
         )
       : [];
+    // [fork:mc D-017] Each budget in the default currency first
+    const defaultCurrencyBudgets = await getDefaultCurrencyBudgets(
+      budgetType,
+      compareMonth,
+    );
     const [budgets] = await Promise.all([
       aqlQuery(
         q(budgetTable)
@@ -259,6 +266,9 @@ export function createSpendingSpreadsheet({
             { amount: { $sum: '$amount' } },
           ]),
       ).then(({ data }) => {
+        for (const row of data) {
+          row.amount = defaultCurrencyBudgets.get(row.category) ?? row.amount;
+        }
         convertBudgets(data);
         return data;
       }),

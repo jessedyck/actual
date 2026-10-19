@@ -134,6 +134,36 @@ describe('createBudgetAnalysisSpreadsheet', () => {
         value,
       })) as BudgetMonthCell[];
 
+    // [fork:mc D-017]
+    it('adds up budgets in other currencies in the default currency', () => {
+      // A CAD budget of 300 counted as 180 EUR, beside a EUR one
+      const result = summarizeMonthCategories(
+        cells({
+          'budget-c1': 30000,
+          'sum-amount-c1': -10000,
+          'leftover-c1': 20000,
+          'carryover-c1': false,
+          'budget-c2': 5000,
+          'sum-amount-c2': -1000,
+          'leftover-c2': 4000,
+          'carryover-c2': false,
+          'mc-d-budget-c1': 18000,
+          'mc-d-sum-amount-c1': -6000,
+          'mc-d-leftover-c1': 12000,
+          'mc-d-budget-c2': 5000,
+          'mc-d-sum-amount-c2': -1000,
+          'mc-d-leftover-c2': 4000,
+        }),
+        [visibleExpense, makeCategory({ id: 'c2', name: 'Rent' })],
+      );
+
+      expect(result).toMatchObject({
+        budgeted: 23000,
+        spent: -7000,
+        carryoverToNextMonth: 16000,
+      });
+    });
+
     it('reports no budget data when every cell is empty', () => {
       const result = summarizeMonthCategories([], [visibleExpense]);
 

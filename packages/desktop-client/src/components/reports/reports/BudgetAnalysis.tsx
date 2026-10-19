@@ -25,6 +25,9 @@ import * as d from 'date-fns';
 import { EditablePageHeaderTitle } from '#components/EditablePageHeaderTitle';
 import { FinancialText } from '#components/FinancialText';
 import { MobileBackButton } from '#components/mobile/MobileBackButton';
+// [fork:mc D-015]
+import { McReportCurrencyProvider } from '#components/multi-currency/McReportCurrencyProvider';
+import { McReportCurrencySelect } from '#components/multi-currency/McReportCurrencySelect';
 import { MobilePageHeader, Page, PageHeader } from '#components/Page';
 import { PrivacyFilter } from '#components/PrivacyFilter';
 import { Change } from '#components/reports/Change';
@@ -42,6 +45,8 @@ import { fromDateRepr } from '#components/reports/util';
 import { useDashboardWidget } from '#hooks/useDashboardWidget';
 import { useFormat } from '#hooks/useFormat';
 import { useLocale } from '#hooks/useLocale';
+// [fork:mc D-015]
+import { useMcReportCurrencyContext } from '#hooks/useMcReportCurrency';
 import { useNavigate } from '#hooks/useNavigate';
 import { useRuleConditionFilters } from '#hooks/useRuleConditionFilters';
 import { useSyncedPref } from '#hooks/useSyncedPref';
@@ -135,7 +140,12 @@ export function BudgetAnalysis() {
     return <LoadingIndicator />;
   }
 
-  return <BudgetAnalysisInternal widget={widget} />;
+  // [fork:mc D-015] Can be shown in another currency
+  return (
+    <McReportCurrencyProvider>
+      <BudgetAnalysisInternal widget={widget} />
+    </McReportCurrencyProvider>
+  );
 }
 
 type BudgetAnalysisInternalProps = {
@@ -144,6 +154,8 @@ type BudgetAnalysisInternalProps = {
 
 function BudgetAnalysisInternal({ widget }: BudgetAnalysisInternalProps) {
   const locale = useLocale();
+  // [fork:mc D-015]
+  const mcValuation = useMcReportCurrencyContext()?.valuation ?? null;
   const dispatch = useDispatch();
   const { t } = useTranslation();
   const format = useFormat();
@@ -279,8 +291,16 @@ function BudgetAnalysisInternal({ widget }: BudgetAnalysisInternalProps) {
         startDate,
         endDate,
         showHiddenCategories,
+        mcValuation,
       }),
-    [conditions, conditionsOp, startDate, endDate, showHiddenCategories],
+    [
+      conditions,
+      conditionsOp,
+      startDate,
+      endDate,
+      showHiddenCategories,
+      mcValuation,
+    ],
   );
 
   const data = useReport('default', getGraphData);
@@ -425,6 +445,8 @@ function BudgetAnalysisInternal({ widget }: BudgetAnalysisInternalProps) {
         onConditionsOpChange={onConditionsOpChange}
         filterInclude={['category', 'saved']}
       >
+        {/* [fork:mc D-015] */}
+        <McReportCurrencySelect />
         <OptionsButton
           graphType={graphType}
           onToggleGraphType={() =>

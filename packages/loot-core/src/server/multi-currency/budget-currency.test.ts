@@ -2,6 +2,7 @@
 import type { MockInstance } from 'vitest';
 
 import { copyPreviousMonth } from '#server/budget/actions';
+import { app as budgetApp } from '#server/budget/app';
 import { createAllBudgets } from '#server/budget/base';
 import * as db from '#server/db';
 import * as sheet from '#server/sheet';
@@ -10,7 +11,12 @@ import * as monthUtils from '#shared/months';
 
 import { recomputePending } from './accounts';
 import { setBudgetCurrency } from './budget-currency';
-import { getMonthRates, refreshMonthRates, setMonthRate } from './month-rates';
+import {
+  getMonthRates,
+  getReportCell,
+  refreshMonthRates,
+  setMonthRate,
+} from './month-rates';
 import { setManualRate } from './rates';
 
 // Test dates are in 2016 because `currentDay()` is pinned to 2017-01-01
@@ -157,6 +163,20 @@ describe('a currency on each budget', () => {
     // 50 CAD arrives as 30 EUR
     expect(cell(JANUARY, 'leftover-rent')).toBe(3000);
     expect(cell(JANUARY, 'from-last-month')).toBe(143000);
+
+    // Reports also get each category's figures in EUR, so budgets in other
+    // currencies add up
+    const cells = await budgetApp.handlers['envelope-budget-month']({
+      month: '2016-12',
+    });
+    const valueOf = (name: string) =>
+      cells.find(item => item.name === `${DECEMBER}!${name}`)?.value;
+    expect(valueOf('budget-rent')).toBe(195000);
+    expect(valueOf('mc-d-budget-rent')).toBe(117000);
+    expect(valueOf('mc-d-sum-amount-rent')).toBe(-114000);
+    expect(valueOf('mc-d-leftover-rent')).toBe(3000);
+    expect(valueOf('mc-d-budget-food')).toBe(40000);
+    expect(getReportCell(DECEMBER, 'budget', 'rent')).toBe('mc-d-budget-rent');
   });
 
   it('converts or keeps the amount when the currency changes', async () => {

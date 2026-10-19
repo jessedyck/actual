@@ -373,23 +373,18 @@ async function loadLegacyPeriods(): Promise<CurrencyPeriod[]> {
 }
 
 /**
- * The first month with budgets: three months before the first transaction,
- * as upstream creates budget months (`getBudgetRange`), or an earlier
- * budget.
+ * The first month whose budgets the change sets: the month of the budget
+ * file's first transaction, or of an earlier budget.
  */
 async function getFirstBudgetMonth(): Promise<string> {
   const currentMonth = monthUtils.currentMonth();
   const firstTransaction = await db.first<{ date: number | null }>(
-    `SELECT MIN(date) AS date FROM transactions
-      WHERE isChild = 0 AND date IS NOT NULL`,
+    'SELECT MIN(date) AS date FROM v_transactions_internal_alive',
   );
   const firstMonth = firstTransaction?.date
     ? monthUtils.monthFromDate(db.fromDateRepr(firstTransaction.date))
     : currentMonth;
-  let start = monthUtils.subMonths(
-    firstMonth < currentMonth ? firstMonth : currentMonth,
-    3,
-  );
+  let start = firstMonth < currentMonth ? firstMonth : currentMonth;
   const firstBudget = await db.first<{ month: number | null }>(
     `SELECT MIN(month) AS month FROM ${getBudgetTable()}`,
   );

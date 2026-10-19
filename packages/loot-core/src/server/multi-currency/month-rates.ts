@@ -19,6 +19,7 @@
 import * as db from '#server/db';
 import { withMutatorContext } from '#server/mutators';
 import * as sheet from '#server/sheet';
+import { resolveName } from '#server/spreadsheet/util';
 import { batchMessages } from '#server/sync';
 import * as monthUtils from '#shared/months';
 import {
@@ -979,6 +980,54 @@ export function groupInputCell(
 ): string {
   return factorCellsEnabled
     ? `mc-d-${kind}-${categoryId}`
+    : `${kind}-${categoryId}`;
+}
+
+const CONVERTED_KINDS: ConvertedKind[] = ['budget', 'sum-amount', 'leftover'];
+
+/**
+ * Each category's figures in a month in the default currency, for reports
+ * (the budget month handlers add them): the converted cells that exist,
+ * named and shaped like the handlers' other cells. Empty while budgets
+ * can't have a currency of their own.
+ */
+export function getConvertedMonthCells(
+  sheetName: string,
+  categoryIds: readonly string[],
+): Array<{ name: string; value: number }> {
+  const spreadsheet = sheet.get();
+  if (!spreadsheet || !factorCellsEnabled) {
+    return [];
+  }
+  const cells: Array<{ name: string; value: number }> = [];
+  for (const id of categoryIds) {
+    for (const kind of CONVERTED_KINDS) {
+      const cell = groupInputCell(kind, id);
+      const value = spreadsheet.getCellValueLoose(sheetName, cell);
+      if (value !== null) {
+        cells.push({
+          name: resolveName(sheetName, cell),
+          value: typeof value === 'number' ? value : 0,
+        });
+      }
+    }
+  }
+  return cells;
+}
+
+/**
+ * The cell a report reads a category's figure from: in the default
+ * currency when the month has one, otherwise upstream's cell.
+ */
+export function getReportCell(
+  sheetName: string,
+  kind: ConvertedKind,
+  categoryId: string,
+): string {
+  const converted = groupInputCell(kind, categoryId);
+  return factorCellsEnabled &&
+    sheet.get()?.getCellValueLoose(sheetName, converted) != null
+    ? converted
     : `${kind}-${categoryId}`;
 }
 

@@ -25,38 +25,44 @@ the fork can switch to upstream's own implementation as it lands.
 
 ## Status
 
-| Piece                                                                          | State   |
-| ------------------------------------------------------------------------------ | ------- |
-| Account currency, account-currency amounts, rate cache (database)              | Done    |
-| Automatic and manual exchange rates                                            | Done    |
-| Conversion on every save, transfers between currencies, splits                 | Done    |
-| Starting balance and backfill when an account gets a currency                  | Done    |
-| Settings: turning it on, exchange rates, default-currency lock                 | Done    |
-| Accounts: currency when creating or changing, balances in that currency        | Done    |
-| Register (desktop): entering and showing amounts in the account's currency     | Done    |
-| Reconcile in the account's currency (desktop)                                  | Done    |
-| Imports (CSV, OFX, QIF, CAMT) in the account's currency                        | Done    |
-| Mobile: amounts and reconcile in the account's currency                        | Done    |
-| Exchange rate adjustment to today's value (desktop)                            | Done    |
-| Net worth report: accounts valued at each period's rate, shown in any currency | Done    |
-| Cash flow report (page and card) in any currency                               | Done    |
-| Custom and spending reports (pages and cards) in any currency                  | Done    |
-| Summary and calendar cards, one currency picker for the whole dashboard        | Done    |
-| A currency on each budget (per category and month), month rates                | Done    |
-| Changing the default currency (for example CAD to EUR), keeping past budgets   | Done    |
-| Rules and schedules in the account's currency                                  | Done    |
-| Other reports (budget analysis, Sankey, crossover…) in another currency        | Planned |
+| Piece                                                                           | State   |
+| ------------------------------------------------------------------------------- | ------- |
+| Account currency, account-currency amounts, rate cache (database)               | Done    |
+| Automatic and manual exchange rates                                             | Done    |
+| Conversion on every save, transfers between currencies, splits                  | Done    |
+| Starting balance and backfill when an account gets a currency                   | Done    |
+| Settings: turning it on, exchange rates, default-currency lock                  | Done    |
+| Accounts: currency when creating or changing, balances in that currency         | Done    |
+| Register (desktop): entering and showing amounts in the account's currency      | Done    |
+| Reconcile in the account's currency (desktop)                                   | Done    |
+| Imports (CSV, OFX, QIF, CAMT) in the account's currency                         | Done    |
+| Mobile: amounts and reconcile in the account's currency                         | Done    |
+| Exchange rate adjustment to today's value (desktop)                             | Done    |
+| Net worth report: accounts valued at each period's rate, shown in any currency  | Done    |
+| Cash flow report (page and card) in any currency                                | Done    |
+| Custom and spending reports (pages and cards) in any currency                   | Done    |
+| Summary, budget analysis and calendar cards, one picker for the whole dashboard | Done    |
+| A currency on each budget (per category and month), month rates                 | Done    |
+| Changing the default currency (for example CAD to EUR), keeping past budgets    | Done    |
+| Rules and schedules in the account's currency                                   | Done    |
+| Other reports (budget analysis, Sankey, crossover…) in another currency         | Planned |
 
 ## Log
 
 What was done, newest first. All of it was implemented by an AI assistant;
 [DEVIATIONS.md](DEVIATIONS.md) has the details of every change.
 
+- **2026-10-20** · Reports that show budgets add them up in one currency,
+  each at its month's rate, so CAD and EUR budgets in the same month no
+  longer mix; budget analysis gets the currency picker (page and dashboard
+  card). Changing the default currency sets budgets from the month of the
+  first transaction.
 - **2026-10-19** · Review round 3: changing the default currency now
   stores the old currency on each past budget and on the accounts without
   one, with the same numbers, instead of a rule about dates (a rule stored
   by the earlier version is moved onto the budgets when a budget file
   opens); clearer wording there and in the account currency dialog.
+  [cf61eb0](https://github.com/jessedyck/actual/commit/cf61eb0)
 - **2026-10-19** · Rules and schedules count amounts in the account's
   currency: a 1.900,00 CA$ mortgage schedule on a CAD account keeps posting
   1.900,00 CA$ after the default currency changes, and rules compare, set

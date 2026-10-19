@@ -9,6 +9,8 @@ import type {
 import type { SyncedPrefs } from '@actual-app/core/types/prefs';
 
 import type { QueryDataEntity } from '#components/reports/ReportOptions';
+// [fork:mc D-017]
+import { findBudgetFigureCell } from '#reports/mcBudgetCells';
 
 import type { BudgetMonthCell } from './budgetMonthCell';
 
@@ -235,8 +237,11 @@ export async function fetchBudgetData({
         continue;
       }
 
-      const budgetCell = monthData.find((cell: BudgetMonthCell) =>
-        cell.name.endsWith(`budget-${cat.id}`),
+      // [fork:mc D-017] In the default currency, like the other budgets
+      const budgetCell = findBudgetFigureCell<BudgetMonthCell>(
+        monthData,
+        'budget',
+        cat.id,
       );
 
       const amount = Number(budgetCell?.value) || 0;

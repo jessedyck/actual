@@ -9,6 +9,8 @@ import * as monthUtils from '@actual-app/core/shared/months';
 import type { BudgetAnalysisWidget } from '@actual-app/core/types/models';
 
 import { FinancialText } from '#components/FinancialText';
+// [fork:mc D-015]
+import { McReportCurrencyProvider } from '#components/multi-currency/McReportCurrencyProvider';
 import { PrivacyFilter } from '#components/PrivacyFilter';
 import { DateRange } from '#components/reports/DateRange';
 import { BudgetAnalysisGraph } from '#components/reports/graphs/BudgetAnalysisGraph';
@@ -19,6 +21,8 @@ import { calculateTimeRange } from '#components/reports/reportRanges';
 import { createBudgetAnalysisSpreadsheet } from '#components/reports/spreadsheets/budget-analysis-spreadsheet';
 import { useReport } from '#components/reports/useReport';
 import { useFormat } from '#hooks/useFormat';
+// [fork:mc D-015]
+import { useMcReportCurrencyContext } from '#hooks/useMcReportCurrency';
 
 type BudgetAnalysisCardProps = {
   widgetId: string;
@@ -27,12 +31,23 @@ type BudgetAnalysisCardProps = {
   onMetaChange: (newMeta: BudgetAnalysisWidget['meta']) => void;
 };
 
-export function BudgetAnalysisCard({
+// [fork:mc D-015] Can be shown in another currency
+export function BudgetAnalysisCard(props: BudgetAnalysisCardProps) {
+  return (
+    <McReportCurrencyProvider>
+      <BudgetAnalysisCardInner {...props} />
+    </McReportCurrencyProvider>
+  );
+}
+
+function BudgetAnalysisCardInner({
   widgetId,
   isEditing,
   meta = {},
   onMetaChange,
 }: BudgetAnalysisCardProps) {
+  // [fork:mc D-015]
+  const mcValuation = useMcReportCurrencyContext()?.valuation ?? null;
   const { t } = useTranslation();
   const format = useFormat();
 
@@ -58,6 +73,7 @@ export function BudgetAnalysisCard({
       startDate,
       endDate,
       showHiddenCategories: meta?.showHiddenCategories ?? false,
+      mcValuation,
     });
   }, [
     meta?.conditions,
@@ -65,6 +81,7 @@ export function BudgetAnalysisCard({
     meta?.showHiddenCategories,
     startDate,
     endDate,
+    mcValuation,
   ]);
 
   const data = useReport('default', getGraphData);
