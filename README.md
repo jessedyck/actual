@@ -1,7 +1,7 @@
 <!-- [fork:mc D-010] Fork notice; upstream's README follows unchanged. -->
 
 > [!WARNING]
-> **This branch is a personal, AI-built fork of Actual for its owner's own
+> **This branch is a personal, AI-built fork of Actual for personal
 > use. Please don't use it.** See [fork/README.md](fork/README.md).
 
 <p align="center">
