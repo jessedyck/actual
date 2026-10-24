@@ -12,6 +12,8 @@ import {
   parseWorkaroundNote,
   recomputePending,
   setAccountCurrency,
+  syncAccountCurrencyNotes,
+  withCurrencyTag,
 } from './accounts';
 import {
   ensureRates,
@@ -54,6 +56,16 @@ async function transferPayee(accountId: string): Promise<string> {
     [accountId],
   );
   return row?.id as string;
+}
+
+async function getAccountRow(id: string) {
+  const row = await db.first<{ mc_currency: string | null; note: string }>(
+    `SELECT a.mc_currency, n.note FROM accounts a
+      LEFT JOIN notes n ON n.id = 'account-' || a.id
+      WHERE a.id = ?`,
+    [id],
+  );
+  return { mc_currency: row?.mc_currency ?? null, note: row?.note ?? null };
 }
 
 async function setupAccounts() {
@@ -444,11 +456,11 @@ describe('transaction conversions', () => {
 });
 
 describe('account currency', () => {
-  it('only stores a currency that differs from the budget currency', async () => {
+  it('stores a valid currency, the budget currency too', async () => {
     expect(await normalizeAccountCurrency('CAD')).toBeNull();
     await enable();
     expect(await normalizeAccountCurrency('CAD')).toBe('CAD');
-    expect(await normalizeAccountCurrency('EUR')).toBeNull();
+    expect(await normalizeAccountCurrency('EUR')).toBe('EUR');
     expect(await normalizeAccountCurrency('cad')).toBeNull();
   });
 
@@ -466,6 +478,14 @@ describe('account currency', () => {
       await getStartingBalanceAmounts({
         balance: 150.25,
         currency: null,
+        date: '2016-10-03',
+      }),
+    ).toEqual({ amount: 15025 });
+    // An account storing the budget currency
+    expect(
+      await getStartingBalanceAmounts({
+        balance: 150.25,
+        currency: 'EUR',
         date: '2016-10-03',
       }),
     ).toEqual({ amount: 15025 });
@@ -509,9 +529,70 @@ describe('account currency', () => {
       mc_amount: -1000,
     });
 
-    // Back to the budget currency clears them again
+    // Back to the budget currency clears them again; EUR stays stored
     await setAccountCurrency({ id: 'eur', currency: 'EUR' });
     expect((await getTransaction('noted'))?.mc_amount).toBeNull();
+    expect(await getAccountRow('eur')).toEqual({
+      mc_currency: 'EUR',
+      note: '#currency:EUR',
+    });
+  });
+
+  it('gives an account the default currency without changing amounts', async () => {
+    await enable();
+    await setupAccounts();
+    await db.update('notes', { id: 'account-eur', note: 'Joint account' });
+    await batchUpdateTransactions({
+      added: [tx({ id: 'coffee', account: 'eur', amount: -1000 })],
+    });
+    expect(
+      await setAccountCurrency({ id: 'eur', currency: 'EUR', convert: false }),
+    ).toEqual({ updated: 0, missingRates: 0 });
+    expect(await getAccountRow('eur')).toEqual({
+      mc_currency: 'EUR',
+      note: 'Joint account\n\n#currency:EUR',
+    });
+    expect(await getTransaction('coffee')).toMatchObject({
+      amount: -1000,
+      mc_amount: null,
+    });
+    // It still counts as an account in the budget currency
+    await batchUpdateTransactions({
+      updated: [{ id: 'coffee', amount: -1200 }],
+    });
+    expect(await getTransaction('coffee')).toMatchObject({
+      amount: -1200,
+      mc_amount: null,
+    });
+  });
+
+  it("writes an account's currency in its note", async () => {
+    expect(withCurrencyTag(null, 'CAD')).toBe('#currency:CAD');
+    expect(withCurrencyTag('  ', 'CAD')).toBe('#currency:CAD');
+    expect(withCurrencyTag('Joint\n', 'CAD')).toBe('Joint\n\n#currency:CAD');
+    expect(withCurrencyTag('Joint #currency:usd here', 'CAD')).toBe(
+      'Joint #currency:CAD here',
+    );
+    expect(withCurrencyTag('A #currency:CAD\n\n#currency:USD', 'CAD')).toBe(
+      'A #currency:CAD',
+    );
+    // Already right: left exactly as it is
+    expect(withCurrencyTag('A  \n#currency:CAD  ', 'CAD')).toBe(
+      'A  \n#currency:CAD  ',
+    );
+
+    await enable();
+    await setupAccounts();
+    await db.update('notes', { id: 'account-cad', note: '#currency:USD' });
+    await db.insertAccount({ id: 'plain', name: 'Plain' });
+    await db.update('notes', { id: 'account-plain', note: '#currency:AUD' });
+    expect(await syncAccountCurrencyNotes()).toBe(2);
+    expect((await getAccountRow('cad')).note).toBe('#currency:CAD');
+    expect((await getAccountRow('usd')).note).toBe('#currency:USD');
+    // An account without a currency keeps its own tag
+    expect((await getAccountRow('plain')).note).toBe('#currency:AUD');
+    // Nothing left to change
+    expect(await syncAccountCurrencyNotes()).toBe(0);
   });
 
   it('can keep the numbers of an account set up in the wrong currency', async () => {
@@ -548,6 +629,7 @@ describe('account currency', () => {
 
     // And back: the CAD numbers become EUR numbers
     await setAccountCurrency({ id: 'eur', currency: 'EUR', convert: false });
+    expect((await getAccountRow('eur')).mc_currency).toBe('EUR');
     expect(await getTransaction('coffee')).toMatchObject({
       amount: -1000,
       mc_amount: null,

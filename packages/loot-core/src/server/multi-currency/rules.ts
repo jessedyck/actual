@@ -215,14 +215,29 @@ export function toAccountCurrencyAmountFilter(
   field: string | undefined,
   filter: unknown,
 ): unknown {
-  if (field !== 'amount' || !getMultiCurrencyContextSync().enabled) {
+  if (field !== 'amount') {
     return filter;
   }
+  const context = getMultiCurrencyContextSync();
+  if (!context.enabled) {
+    return filter;
+  }
+  // An account can store the default currency (D-012)
+  const isDefault = {
+    $or: [
+      { 'account.mc_currency': null },
+      { 'account.mc_currency': context.budgetCurrency },
+    ],
+  };
   return {
     $or: [
-      { $and: [{ 'account.mc_currency': null }, filter] },
+      { $and: [isDefault, filter] },
       {
-        $and: [{ 'account.mc_currency': { $ne: null } }, renameAmount(filter)],
+        $and: [
+          { 'account.mc_currency': { $ne: null } },
+          { 'account.mc_currency': { $ne: context.budgetCurrency } },
+          renameAmount(filter),
+        ],
       },
     ],
   };

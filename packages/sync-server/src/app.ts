@@ -21,6 +21,9 @@ import * as simpleFinApp from './app-simplefin/app-simplefin';
 import * as syncApp from './app-sync';
 import { config } from './load-config';
 
+// [fork:mc D-019] Set by vite.config.mts
+declare const __APP_VERSION__: string | undefined;
+
 const debugSensitive = createDebug('actual-sensitive:server');
 
 const app = express();
@@ -116,7 +119,12 @@ app.get('/info', (_req, res) => {
     build: {
       name: packageJson?.name,
       description: packageJson?.description,
-      version: packageJson?.version,
+      // [fork:mc D-019] The build's version, with its commit (defined at
+      // build time; unbuilt code, as in tests, reads package.json)
+      version:
+        typeof __APP_VERSION__ === 'string'
+          ? __APP_VERSION__
+          : packageJson?.version,
     },
   });
 });

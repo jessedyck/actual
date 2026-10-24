@@ -17,6 +17,7 @@ import { app as mainApp } from '#server/main-app';
 import {
   getStartingBalanceAmounts,
   normalizeAccountCurrency,
+  syncAccountCurrencyNotes,
 } from '#server/multi-currency/accounts';
 import { mutator } from '#server/mutators';
 import { del, get, post } from '#server/post';
@@ -601,6 +602,11 @@ async function createAccount({
       cleared: true,
       starting_balance_flag: true,
     });
+  }
+
+  // [fork:mc D-012] The currency in the account's note too
+  if (currency) {
+    await syncAccountCurrencyNotes([id]);
   }
 
   return id;

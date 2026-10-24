@@ -45,6 +45,8 @@ the fork can switch to upstream's own implementation as it lands.
 | A currency on each budget (per category and month), month rates                 | Done    |
 | Changing the default currency (for example CAD to EUR), keeping past budgets    | Done    |
 | Rules and schedules in the account's currency                                   | Done    |
+| Account currency in the account's note (`#currency:XXX`)                        | Done    |
+| Server and app versions with the commit they were built from                    | Done    |
 | Other reports (budget analysis, Sankey, crossover…) in another currency         | Planned |
 
 ## Log
@@ -52,11 +54,19 @@ the fork can switch to upstream's own implementation as it lands.
 What was done, newest first. All of it was implemented by an AI assistant;
 [DEVIATIONS.md](DEVIATIONS.md) has the details of every change.
 
+- **2026-10-24** · The server shows the same version as the app, both
+  with the commit they were built from (for example `v26.10.0+abc1234`), and
+  Settings says when they differ. An account can be set to the default
+  currency itself, without changing any amount, so a later change of the
+  default leaves it alone; new accounts keep the currency they're created
+  in. An account's currency is also written in its note as
+  `#currency:XXX`, the format Actual's docs use.
 - **2026-10-20** · Reports that show budgets add them up in one currency,
   each at its month's rate, so CAD and EUR budgets in the same month no
   longer mix; budget analysis gets the currency picker (page and dashboard
   card). Changing the default currency sets budgets from the month of the
   first transaction.
+  [f9ccd74](https://github.com/jessedyck/actual/commit/f9ccd74)
 - **2026-10-19** · Review round 3: changing the default currency now
   stores the old currency on each past budget and on the accounts without
   one, with the same numbers, instead of a rule about dates (a rule stored

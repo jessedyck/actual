@@ -8,8 +8,10 @@
 // without one a currency: the old one (same amounts, stored on each
 // transaction as `mc_amount`), or another such as EUR for an account
 // recorded with the docs workaround, whose amounts are then read from its
-// notes. Nothing is stored about dates: later changes of the default
-// currency leave whatever has a currency alone. Every transaction's
+// notes. An account keeps the currency stored on it even when it is the new
+// default, and its note carries it (`#currency:XXX`). Nothing is stored
+// about dates: later changes of the default currency leave whatever has a
+// currency alone. Every transaction's
 // `amount` becomes its value in the new default currency at the rate of
 // its month; values counted in a budget of another currency
 // (`mc_budget_amount`) keep what the budget counted, so past months show
@@ -36,7 +38,11 @@ import {
 } from '#shared/multi-currency';
 import type { CurrencyPeriod } from '#shared/multi-currency';
 
-import { getWorkaroundNoteCurrency, parseWorkaroundNote } from './accounts';
+import {
+  getWorkaroundNoteCurrency,
+  parseWorkaroundNote,
+  syncAccountCurrencyNotes,
+} from './accounts';
 import { isSupportedCurrency } from './budget-currency';
 import {
   budgetKey,
@@ -939,8 +945,9 @@ export async function setDefaultCurrency({
   let deletedRules = 0;
   await batchMessages(async () => {
     for (const account of accounts) {
-      const will = after(account.id);
-      const mcCurrency = will === toCurrency ? null : will;
+      // An account with a currency keeps it stored, the new default too
+      // (D-012); one left without follows the new default
+      const mcCurrency = followsDefault(account.id) ? null : after(account.id);
       if (mcCurrency !== account.mc_currency) {
         await db.update('accounts', {
           id: account.id,
@@ -995,6 +1002,8 @@ export async function setDefaultCurrency({
   });
   resetFormulaPreferencesCache();
   await ensureBudgetFactorRates();
+  // Accounts' currencies in their notes (D-012)
+  await syncAccountCurrencyNotes();
 
   return {
     accounts: updatedAccounts,

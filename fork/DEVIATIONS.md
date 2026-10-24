@@ -72,13 +72,14 @@ so, reconciling needs a data migration, described under D-002.
 | D-009 | Docker image built from this branch                           | none (fork-owned workflow)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Done                                                                                         |
 | D-010 | Fork docs and notices                                         | `README.md` (notice at the top)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Done                                                                                         |
 | D-011 | Client hooks: multi-currency state, per-currency formatting   | none (fork-owned)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Done                                                                                         |
-| D-012 | Accounts: currency on create and change, balances             | `loot-core/src/server/accounts/app.ts` (`accounts-get`), `desktop-client/src/accounts/mutations.ts`, `desktop-client/src/modals/modalsSlice.ts`, `desktop-client/src/components/{Modals,modals/CreateLocalAccountModal,modals/AccountMenuModal,accounts/Header,accounts/Account,sidebar/Account,mobile/accounts/AccountsPage,mobile/transactions/TransactionListWithBalances}.tsx`, `loot-core/src/types/prefs.ts` (pref key)                                                                                                                                                                                                                                                                                                | Done                                                                                         |
+| D-012 | Accounts: currency on create and change, note tag, balances   | `loot-core/src/server/accounts/app.ts` (`accounts-get`, `account-create`), `desktop-client/src/accounts/mutations.ts`, `desktop-client/src/modals/modalsSlice.ts`, `desktop-client/src/components/{Modals,modals/CreateLocalAccountModal,modals/AccountMenuModal,accounts/Header,accounts/Account,sidebar/Account,mobile/accounts/AccountsPage,mobile/transactions/TransactionListWithBalances}.tsx`, `loot-core/src/types/prefs.ts` (pref key)                                                                                                                                                                                                                                                                              | Done                                                                                         |
 | D-013 | Register: amounts in the account's currency                   | `desktop-client/src/components/transactions/{TransactionList,TransactionsTable}.tsx`, `desktop-client/src/components/accounts/Account.tsx`, `desktop-client/src/components/mobile/{accounts/AccountTransactions,transactions/TransactionEdit}.tsx`                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Done                                                                                         |
 | D-014 | Exchange rate adjustment                                      | none (fork-owned)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Done (desktop)                                                                               |
 | D-015 | Reports in a display currency                                 | `loot-core/src/types/prefs.ts` (pref key), `desktop-client/src/hooks/useFormat.ts`, `desktop-client/src/components/reports/spreadsheets/{net-worth-spreadsheet,custom-spreadsheet,grouped-spreadsheet,fetchSpreadsheetQueryData,spending-spreadsheet}.ts`, `desktop-client/src/components/reports/spreadsheets/cash-flow-spreadsheet.tsx`, `desktop-client/src/components/reports/reports/{NetWorth,NetWorthCard,CashFlow,CashFlowCard,CustomReport,GetCardData,Spending,SpendingCard,Summary,SummaryCard,CalendarCard,BudgetAnalysis,BudgetAnalysisCard}.tsx`, `desktop-client/src/components/reports/spreadsheets/{summary,calendar,budget-analysis}-spreadsheet.ts`, `desktop-client/src/components/reports/Overview.tsx` | Done for net worth, cash flow, custom, spending, summary, budget analysis and calendar cards |
 | D-016 | Changing the budget currency (replaced by D-017)              | (see D-017)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Retired                                                                                      |
 | D-017 | A currency on each budget; changing the default currency      | `loot-core/src/server/budget/*`, `loot-core/src/server/api.ts`, budget page and budget menus (desktop and mobile), report spreadsheets that read budgets, `hooks/useFormulaExecution.ts`, `settings/Currency.tsx`, `global-events.ts`, modal registry, schema, 4 snapshot files (full list under D-017)                                                                                                                                                                                                                                                                                                                                                                                                                      | Done                                                                                         |
 | D-018 | Rules and schedules in the account's currency                 | `loot-core/src/server/transactions/transaction-rules.ts`, `loot-core/src/server/schedules/{app,find-schedules}.ts`, `loot-core/src/server/forecast/forecast-schedules.ts`, `desktop-client/src/components/schedules/{SchedulesTable,ScheduleEditForm,ScheduleEditModal}.tsx`, `desktop-client/src/components/rules/{RuleRow,RuleEditor}.tsx`, `desktop-client/src/components/mobile/{schedules/SchedulesListItem,rules/RulesListItem}.tsx`, `desktop-client/src/components/transactions/SimpleTransactionsTable.tsx`                                                                                                                                                                                                         | Done                                                                                         |
+| D-019 | Server version carries the build's commit, like the client's  | `sync-server/vite.config.mts`, `sync-server/src/app.ts`, `desktop-client/src/components/settings/index.tsx`, `desktop-client/src/components/manager/ManagementApp.tsx`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Done                                                                                         |
 
 ### D-001: `multiCurrency` flag
 
@@ -93,10 +94,13 @@ its checks; the stored data stays valid.
 
 Migration `1791961050603_mc_multi_currency.sql`:
 
-- `accounts.mc_currency` TEXT: ISO 4217 code, NULL = default currency.
+- `accounts.mc_currency` TEXT: ISO 4217 code. NULL = no currency of its
+  own: the account follows the default currency. It can also hold the
+  default currency itself (D-012): the account then works like a NULL one
+  until the default changes, and keeps its currency when it does.
 - `transactions.mc_amount` INTEGER: amount in the account currency, in its
-  minor units (JPY has none, KWD has three). NULL for default-currency
-  accounts.
+  minor units (JPY has none, KWD has three). NULL for accounts in the
+  default currency, whether stored or not.
 - `mc_exchange_rates` (synced): `id` = `YYYYMMDD:BASE:QUOTE`, `date`, `base`,
   `quote`, `rate` (1 base = rate quote), `source` (`frankfurter` | `manual`).
 
@@ -152,13 +156,15 @@ typed in `types/handlers.ts`): `mc-get-context`, `mc-get-rate`, `mc-convert`,
 `mc-rates-list`, `mc-rate-set`, `mc-rate-delete`, `mc-rates-fetch`,
 `mc-account-set-currency`, `mc-recompute-pending`.
 
-`account-create` (`server/accounts/app.ts`) accepts `mc_currency`; the
-starting balance is then taken in that currency and converted.
+`account-create` (`server/accounts/app.ts`) accepts `mc_currency` (the
+default currency included, D-012); the starting balance is then taken in
+that currency and converted.
 
 `mc-account-set-currency` backfills existing transactions: it reads the
 amount written by the documented rule-template workaround
 (`52.43 AUD (FX rate: 0.65) • …`) when present, otherwise converts the budget
-amount at each transaction's date. Notes are left untouched.
+amount at each transaction's date. Transaction notes are left untouched;
+the account's note gets the currency tag (D-012).
 
 ### D-006: Consistent amounts on every write
 
@@ -311,6 +317,29 @@ account's currency too, so imports into converted accounts keep working.
   `McAccountTotalsProvider` / `McAccountTotal`). The
   mobile account page (`mobile/transactions/TransactionListWithBalances.tsx`,
   new prop `mcAccount`) shows balance, cleared and uncleared the same way.
+- **The default currency as an account's own**: an account can store the
+  default currency (`mc_currency` = `defaultCurrencyCode`). Its amounts stay
+  in `amount` and `mc_amount` stays empty, as for an account without a
+  currency (D-006 already treats only a currency other than the default as
+  foreign); the difference shows when the default changes, where it keeps
+  its currency and numbers like any account with one (D-017). The currency
+  dialog offers **Set to XXX** for an account without one, which changes no
+  amount; picking the default in Convert or Keep the numbers stores it too.
+  New accounts store the currency picked, the default one when untouched
+  (`CreateLocalAccountModal.tsx`). Code that asks whether an account is
+  foreign compares with the default (`isForeignCurrencyAccount`); the
+  rules' amount filter does the same (D-018). Accounts created by bank sync
+  or older versions keep NULL until given a currency.
+- **The currency in the account's note**: whenever an account gets a
+  currency (`account-create`, `mc-account-set-currency`, changing the
+  default currency), its note (`notes`, id `account-<id>`) gets the docs'
+  `#currency:XXX` tag: an existing tag is replaced, otherwise the tag goes
+  on a line of its own at the end. On opening a budget file, notes of
+  accounts with a currency are brought in line (`syncAccountCurrencyNotes`,
+  run by the multi-currency service); notes of accounts without one are left
+  alone, since a tag there is the user's and suggests a currency when the
+  default changes. The account's `mc_currency` is what counts: editing the
+  tag doesn't change the currency, and the next opening puts it back.
 - **Server**: `accounts-get` (`server/accounts/app.ts`) maps account rows
   field by field; it now includes `mc_currency`.
 
@@ -608,7 +637,8 @@ ExpenseCategoryListItem,IncomeCategoryListItem}.tsx`; the budget menus
   - Accounts without one get the old currency as their own (every
     transaction gets `mc_amount` with the same number), get another (read
     from workaround notes, else converted at each month's rate), or follow
-    with the same numbers. The preview suggests a currency
+    with the same numbers. An account given a currency keeps it stored even
+    when it is the new default (D-012), and its note gets the tag. The preview suggests a currency
     from the docs' `#currency:XXX` account note, an "(XXX)" name suffix, or
     workaround notes on at least half of the account's transactions.
   - Every `amount` is worked out again in the new default at its month's
@@ -702,6 +732,25 @@ _Reconcile:_ keep while upstream rules compare default-currency amounts.
 If upstream makes `amount` the account currency, drop the views and the
 filter; the schedule changes then become upstream's own behaviour.
 
+### D-019: Versions with the commit
+
+Upstream's web build already appends the short commit to the client version
+when `COMMIT_REF` or `GITHUB_SHA` is set and it isn't a tag build
+(`computeClientVersion`, `desktop-client/vite.config.mts`), so the fork's
+image showed `v26.10.0+abc1234` for the app but `26.10.0` for the server.
+The sync server's build (`sync-server/vite.config.mts`) now does the same
+for `__APP_VERSION__`, which `/info` (`sync-server/src/app.ts`) returns
+when it is defined (unbuilt code, as in tests, still reads
+`package.json`) and `actual-server --version` prints. Both builds run in the
+same `yarn build:server` step of `fork-docker.yml`, so every image's app and
+server show the same version. Settings (`settings/index.tsx`) and the file
+manager's footer (`manager/ManagementApp.tsx`) write the server version
+with a `v` like the app's, and Settings says when the two differ (a page
+still running an older app).
+
+_Reconcile:_ drop when upstream's server reports its commit; the Settings
+note can go with it or stay.
+
 ### D-009: Docker image
 
 `.github/workflows/fork-docker.yml` builds the same image as upstream's
@@ -718,7 +767,8 @@ a failing commit never replaces the published image.
 
 - `hooks/useMultiCurrency.ts`: whether the feature is on (flag plus budget
   currency, same rule as the server's `getMultiCurrencyContext`), an
-  account's currency state, and whether any account has its own currency.
+  account's currency state, whether any account stores a currency (which
+  locks the plain default-currency picker) and whether any is foreign.
 - `hooks/useMultiCurrencyFormat.ts`: formats and parses amounts in any
   currency with the user's number format, symbol position and spacing, using
   that currency's symbol and decimal places. Upstream's `useFormat` only

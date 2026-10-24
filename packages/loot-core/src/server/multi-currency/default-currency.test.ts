@@ -277,6 +277,14 @@ async function getBudgetCurrency(month: number, category: string) {
   return row ? row.mc_currency : undefined;
 }
 
+async function getNote(id: string) {
+  const row = await db.first<{ note: string | null }>(
+    'SELECT note FROM notes WHERE id = ?',
+    [id],
+  );
+  return row?.note ?? null;
+}
+
 async function getAccountCurrency(id: string) {
   const row = await db.first<{ mc_currency: string | null }>(
     'SELECT mc_currency FROM accounts WHERE id = ?',
@@ -358,8 +366,13 @@ describe('changing the default currency', () => {
     expect(rows.g1).toEqual({ amount: -1150, mc: -1000, budget: null });
 
     expect(await getAccountCurrency('chq')).toBe('CAD');
-    expect(await getAccountCurrency('eur')).toBeNull();
+    // Given the new default, it keeps it stored (D-012)
+    expect(await getAccountCurrency('eur')).toBe('EUR');
     expect(await getAccountCurrency('gbp')).toBe('GBP');
+    // Each account's note carries its currency
+    expect(await getNote('account-chq')).toBe('#currency:CAD');
+    expect(await getNote('account-eur')).toBe('#currency:EUR');
+    expect(await getNote('account-gbp')).toBe('#currency:GBP');
 
     // Budget amounts don't change
     const budgets = await db.all<{ id: string; amount: number }>(
@@ -408,6 +421,8 @@ describe('changing the default currency', () => {
     expect(rows.c1).toEqual({ amount: -10000, mc: null, budget: null });
     expect(rows.bill).toEqual({ amount: -100000, mc: null, budget: null });
     expect(await getAccountCurrency('chq')).toBeNull();
+    // No currency, no tag
+    expect(await getNote('account-chq')).toBeNull();
     expect(await getBudgetCurrency(201610, 'food')).toBeNull();
     expect(await getPref('mcCurrencyPeriods')).toBeUndefined();
     // Like the budgets, money held keeps its number
@@ -418,6 +433,20 @@ describe('changing the default currency', () => {
   });
 
   // [fork:mc D-018]
+  it('leaves an account that stores the old default in it', async () => {
+    await setupBudget();
+    await db.update('accounts', { id: 'chq', mc_currency: 'CAD' });
+    await setDefaultCurrency({
+      toCurrency: 'EUR',
+      accountCurrencies: {},
+      keepBudgets: false,
+    });
+    const rows = await getTransactions();
+    // Same numbers in CAD, worth the month's rate in EUR
+    expect(rows.c1).toMatchObject({ amount: -7000, mc: -10000 });
+    expect(await getAccountCurrency('chq')).toBe('CAD');
+  });
+
   it("converts a rule's amounts into its account's new currency", async () => {
     await setupBudget();
     await setManualRate({

@@ -161,6 +161,8 @@ describe('amounts in the account currency', () => {
 
   it('filters by the account currency amount', async () => {
     await setup();
+    // An account storing the default currency (D-012)
+    await db.insertAccount({ id: 'own', name: 'Livret', mc_currency: 'EUR' });
     await batchUpdateTransactions({
       added: [
         {
@@ -172,6 +174,7 @@ describe('amounts in the account currency', () => {
         },
         { id: 'e', account: 'eur', date: '2016-10-05', amount: -190000 },
         { id: 'x', account: 'eur', date: '2016-10-06', amount: -114000 },
+        { id: 'o', account: 'own', date: '2016-10-07', amount: -190000 },
       ],
     });
     const { filters } = conditionsToAQL([
@@ -180,7 +183,7 @@ describe('amounts in the account currency', () => {
     const { data } = await aqlQuery(
       q('transactions').filter({ $and: filters }).select(['id']).orderBy('id'),
     );
-    expect(data.map((row: { id: string }) => row.id)).toEqual(['e', 'm']);
+    expect(data.map((row: { id: string }) => row.id)).toEqual(['e', 'm', 'o']);
   });
 
   it("applies actions to the account's own amount", async () => {

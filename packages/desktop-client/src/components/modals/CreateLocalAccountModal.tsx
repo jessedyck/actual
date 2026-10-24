@@ -28,6 +28,8 @@ import { Checkbox } from '#components/forms';
 import { AccountCurrencyField } from '#components/multi-currency/AccountCurrencyField';
 import { validateAccountName } from '#components/util/accountValidation';
 import { useAccounts } from '#hooks/useAccounts';
+// [fork:mc D-012]
+import { useMultiCurrency } from '#hooks/useMultiCurrency';
 import { useNavigate } from '#hooks/useNavigate';
 import { useSyncServerStatus } from '#hooks/useSyncServerStatus';
 import { closeModal } from '#modals/modalsSlice';
@@ -42,8 +44,10 @@ export function CreateLocalAccountModal() {
   const [name, setName] = useState('');
   const [offbudget, setOffbudget] = useState(false);
   const [balance, setBalance] = useState('0');
-  // [fork:mc D-012] Empty means the budget currency
+  // [fork:mc D-012] Empty means the budget currency, which the account then
+  // stores as its own
   const [currency, setCurrency] = useState('');
+  const { isEnabled: isMcEnabled, budgetCurrency } = useMultiCurrency();
 
   const [nameError, setNameError] = useState(null);
   const [balanceError, setBalanceError] = useState(false);
@@ -77,7 +81,7 @@ export function CreateLocalAccountModal() {
           balance: toRelaxedNumber(balance),
           offBudget: offbudget,
           // [fork:mc D-012]
-          mc_currency: currency || null,
+          mc_currency: currency || (isMcEnabled ? budgetCurrency : null),
         },
         {
           onSuccess: id => {

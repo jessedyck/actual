@@ -55,13 +55,23 @@ export function useAccountCurrency(
 }
 
 /**
- * True when any account (open or closed) has its own currency. The budget
- * currency must not change then: existing budget amounts would be read in
- * the wrong currency.
+ * True when any account (open or closed) has a currency stored on it, the
+ * default one included (D-012). The default currency must not change by
+ * itself then: amounts would be read in the wrong currency.
  */
-export function useHasForeignCurrencyAccounts(): boolean {
+export function useHasAccountCurrencies(): boolean {
   const { data: accounts = [] } = useAccounts();
   return accounts.some(account => Boolean(account.mc_currency));
+}
+
+/** True when any account (open or closed) is in another currency. */
+export function useHasForeignCurrencyAccounts(): boolean {
+  const { data: accounts = [] } = useAccounts();
+  const { isEnabled, budgetCurrency } = useMultiCurrency();
+  return (
+    isEnabled &&
+    accounts.some(account => isForeignCurrencyAccount(account, budgetCurrency))
+  );
 }
 
 /**

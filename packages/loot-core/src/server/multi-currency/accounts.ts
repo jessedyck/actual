@@ -12,8 +12,10 @@ import { convertAmount, getMultiCurrencyContext } from './rates';
 import { loadForeignAccounts } from './transactions';
 
 /**
- * The currency to store on an account: null when the feature is off, the
- * code is invalid, or it equals the budget currency.
+ * The currency to store on an account: null when the feature is off or the
+ * code is invalid. The default currency is stored too: such an account
+ * works like one without a currency until the default changes, and then
+ * keeps its own (see `setAccountCurrency`).
  */
 export async function normalizeAccountCurrency(
   currency: string | null | undefined,
@@ -21,8 +23,85 @@ export async function normalizeAccountCurrency(
   if (!currency || !isCurrencyCode(currency)) {
     return null;
   }
-  const { enabled, budgetCurrency } = await getMultiCurrencyContext();
-  return enabled && currency !== budgetCurrency ? currency : null;
+  const { enabled } = await getMultiCurrencyContext();
+  return enabled ? currency : null;
+}
+
+const NOTE_CURRENCY_TAG = /#currency:[A-Za-z]{3}\b/g;
+
+/**
+ * An account note carrying `currency` in the docs' `#currency:XXX` format:
+ * the first tag replaced (any others removed), or the tag added on a line
+ * of its own.
+ */
+export function withCurrencyTag(
+  note: string | null | undefined,
+  currency: string,
+): string {
+  const tag = `#currency:${currency}`;
+  if (!note?.trim()) {
+    return tag;
+  }
+  const tags = note.match(NOTE_CURRENCY_TAG) ?? [];
+  if (tags.length === 0) {
+    return `${note.trimEnd()}\n\n${tag}`;
+  }
+  if (tags.length === 1 && tags[0] === tag) {
+    return note;
+  }
+  let isFirst = true;
+  const replaced = note.replace(NOTE_CURRENCY_TAG, () => {
+    const replacement = isFirst ? tag : '';
+    isFirst = false;
+    return replacement;
+  });
+  return tags.length === 1
+    ? replaced
+    : replaced
+        .replace(/[ \t]+$/gm, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trimEnd();
+}
+
+/**
+ * Puts each account's currency in its note (`#currency:XXX`), for accounts
+ * that have one. Notes of accounts without a currency are left alone: a tag
+ * there is the user's (the docs workaround) and suggests a currency when
+ * the default changes. With `accountIds`, only those accounts.
+ */
+export async function syncAccountCurrencyNotes(
+  accountIds?: string[],
+): Promise<number> {
+  const { enabled } = await getMultiCurrencyContext();
+  if (!enabled) {
+    return 0;
+  }
+  const rows = await db.all<{
+    id: string;
+    mc_currency: string;
+    note: string | null;
+  }>(
+    `SELECT a.id, a.mc_currency, n.note FROM accounts a
+      LEFT JOIN notes n ON n.id = 'account-' || a.id
+      WHERE a.tombstone = 0 AND a.mc_currency IS NOT NULL`,
+  );
+  const only = accountIds ? new Set(accountIds) : null;
+  const updates = rows
+    .filter(row => !only || only.has(row.id))
+    .map(row => ({
+      id: `account-${row.id}`,
+      note: withCurrencyTag(row.note, row.mc_currency),
+      old: row.note,
+    }))
+    .filter(update => update.note !== update.old);
+  if (updates.length > 0) {
+    await batchMessages(async () => {
+      for (const { id, note } of updates) {
+        await db.update('notes', { id, note });
+      }
+    });
+  }
+  return updates.length;
 }
 
 /**
@@ -38,10 +117,10 @@ export async function getStartingBalanceAmounts({
   currency: string | null;
   date: string;
 }): Promise<{ amount: number; mc_amount?: number }> {
-  if (!currency) {
+  const { budgetCurrency } = await getMultiCurrencyContext();
+  if (!currency || currency === budgetCurrency) {
     return { amount: amountToInteger(balance) };
   }
-  const { budgetCurrency } = await getMultiCurrencyContext();
   const mcAmount = amountToInteger(balance, getDecimalPlaces(currency));
   // [fork:mc D-017] At the rate of the date's month
   const lookup = createMonthRateLookup();
@@ -249,6 +328,11 @@ type AccountCurrencyUpdate = {
  * and their default-currency value is worked out again; a transfer keeps
  * matching the other account. [fork:mc D-017] Values counted in budgets of
  * another currency follow the new account amounts.
+ *
+ * [fork:mc D-012] The currency is stored as given, the default one too, and
+ * written in the account's note (`#currency:XXX`). Giving an account without
+ * one the default currency changes no amount: from then on it keeps that
+ * currency when the default changes.
  */
 export async function setAccountCurrency({
   id,
@@ -273,16 +357,22 @@ export async function setAccountCurrency({
   const from = accountRow?.mc_currency || budgetCurrency;
   const to = code ?? budgetCurrency;
 
-  const rows = await db.all<BackfillRow>(
-    `SELECT ${BACKFILL_FIELDS} FROM v_transactions_internal_alive
-      WHERE account = ?`,
-    [id],
-  );
+  // [fork:mc D-012] Same currency: only the stored one changes
+  const rows =
+    from === to
+      ? []
+      : await db.all<BackfillRow>(
+          `SELECT ${BACKFILL_FIELDS} FROM v_transactions_internal_alive
+            WHERE account = ?`,
+          [id],
+        );
 
   let updates: AccountCurrencyUpdate[] = [];
   let missingRates = 0;
   const lookup = createMonthRateLookup();
-  if (!convert && from !== to) {
+  if (from === to) {
+    // Nothing to convert
+  } else if (!convert) {
     const kept = await keepAccountNumbers({ id, rows, from, to, lookup });
     updates = kept.updates;
     missingRates = kept.missingRates;
@@ -340,11 +430,13 @@ export async function setAccountCurrency({
   await lookup.flush();
 
   await batchMessages(async () => {
-    await db.update('accounts', { id, mc_currency: code });
+    // [fork:mc D-012]
+    await db.update('accounts', { id, mc_currency: currency || null });
     for (const update of updates) {
       await db.updateTransaction(update);
     }
   });
+  await syncAccountCurrencyNotes([id]);
   return { updated: updates.length, missingRates };
 }
 

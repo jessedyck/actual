@@ -8,6 +8,15 @@ const pkg = JSON.parse(
   readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8'),
 );
 
+// [fork:mc D-019] Builds from a commit carry it in their version, the way
+// the web client's does (computeClientVersion), so Settings shows the same
+// version for both. Release tags keep their plain version.
+const commitRef =
+  process.env.GITHUB_REF_TYPE === 'tag'
+    ? ''
+    : (process.env.COMMIT_REF || process.env.GITHUB_SHA || '').slice(0, 7);
+const appVersion = commitRef ? `${pkg.version}+${commitRef}` : pkg.version;
+
 const shebangPlugin = (entryFile: string): Plugin => ({
   name: 'sync-server-shebang',
   generateBundle(_options, bundle) {
@@ -66,7 +75,8 @@ export default defineConfig({
     },
   },
   define: {
-    __APP_VERSION__: JSON.stringify(pkg.version),
+    // [fork:mc D-019]
+    __APP_VERSION__: JSON.stringify(appVersion),
   },
   assetsInclude: ['**/*.sql'],
   plugins: [shebangPlugin('bin/actual-server.js')],

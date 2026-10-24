@@ -11,7 +11,7 @@ import { Checkbox } from '#components/forms';
 import { useHasBudgetCurrencies } from '#components/multi-currency/McBudgetCurrencies';
 // [fork:mc D-007]
 import {
-  useHasForeignCurrencyAccounts,
+  useHasAccountCurrencies,
   useMultiCurrency,
 } from '#hooks/useMultiCurrency';
 import { useSyncedPref } from '#hooks/useSyncedPref';
@@ -87,11 +87,12 @@ export function CurrencySettings() {
   );
   const selectedCurrencyCode = defaultCurrencyCode || '';
   // [fork:mc D-007, D-017] Existing amounts would be read in the wrong
-  // currency if the default currency changed while accounts or budgets use
-  // their own: "Change default currency" handles that instead
-  const hasForeignAccounts = useHasForeignCurrencyAccounts();
+  // currency if the default currency changed while accounts or budgets have
+  // their own (D-012: the default one too): "Change default currency"
+  // handles that instead
+  const hasAccountCurrencies = useHasAccountCurrencies();
   const hasBudgetCurrencies = useHasBudgetCurrencies();
-  const isBudgetCurrencyLocked = hasForeignAccounts || hasBudgetCurrencies;
+  const isBudgetCurrencyLocked = hasAccountCurrencies || hasBudgetCurrencies;
   const { isEnabled: isMultiCurrencyEnabled } = useMultiCurrency();
 
   const [symbolPosition, setSymbolPositionPref] = useSyncedPref(

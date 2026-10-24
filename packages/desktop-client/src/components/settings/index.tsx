@@ -51,6 +51,9 @@ function About() {
   const { t } = useTranslation();
   const serverURL = useServerURL();
   const version = useServerVersion();
+  // [fork:mc D-019]
+  const serverVersion = version.replace(/^v/, '');
+  const clientVersion = window.Actual?.ACTUAL_VERSION;
   const versionInfo = useSelector(state => state.app.versionInfo);
   const [notifyWhenUpdateIsAvailable, setNotifyWhenUpdateIsAvailablePref] =
     useGlobalPref('notifyWhenUpdateIsAvailable', () => {
@@ -81,9 +84,20 @@ function About() {
       {serverURL && (
         <SettingsRow
           title={t('Server version')}
+          // [fork:mc D-019] Written like the client's, with a note when the
+          // two come from different builds
+          description={
+            version &&
+            serverVersion !== clientVersion && (
+              <Trans>
+                Not the same build as this app. Reload the page to get the app
+                that comes with the server.
+              </Trans>
+            )
+          }
           control={
             <Text data-vrt-mask style={styles.tnum}>
-              {version}
+              {version && `v${serverVersion}`}
             </Text>
           }
         />

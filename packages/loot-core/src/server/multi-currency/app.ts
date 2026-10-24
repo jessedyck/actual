@@ -10,6 +10,7 @@ import {
   getAccountTotals,
   recomputePending,
   setAccountCurrency,
+  syncAccountCurrencyNotes,
 } from './accounts';
 import { setBudgetCurrency } from './budget-currency';
 import {
@@ -102,6 +103,8 @@ app.service(() => {
   });
   void runMutator(async () => {
     await migrateCurrencyPeriods();
+    // [fork:mc D-012] Accounts' currencies in their notes
+    await syncAccountCurrencyNotes();
     await refreshMonthRates();
   }).catch(error => {
     logger.warn('[multi-currency] Could not refresh month rates:', error);

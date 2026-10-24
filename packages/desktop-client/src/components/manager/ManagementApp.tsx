@@ -36,7 +36,9 @@ import { OpenIdCallback } from './subscribe/OpenIdCallback';
 import { WelcomeScreen } from './WelcomeScreen';
 
 function Version() {
-  const version = useServerVersion();
+  // [fork:mc D-019] Written like the app's version
+  const serverVersion = useServerVersion();
+  const version = serverVersion && `v${serverVersion.replace(/^v/, '')}`;
 
   return (
     <Text

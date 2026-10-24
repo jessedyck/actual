@@ -38,7 +38,9 @@ export function ExchangeRatesSetting({
     ...new Set(
       accounts
         .map(account => account.mc_currency)
-        .filter((code): code is string => Boolean(code)),
+        .filter(
+          (code): code is string => Boolean(code) && code !== budgetCurrency,
+        ),
     ),
   ];
 
